@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trophy, Trash2, Play, CheckCircle, Award } from "lucide-react";
+import { Plus, Trash2, Play, CheckCircle, Award, Zap } from "lucide-react";
 
 interface Tournament {
   id: string;
@@ -36,19 +36,16 @@ export default function AdminPanel() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [registrations, setRegistrations] = useState<Record<string, string[]>>({});
 
-  // Create tournament form
   const [newTournament, setNewTournament] = useState({
     name: "", description: "", format: "single_elimination", type: "singles",
     max_players: "", groups_count: "4"
   });
 
-  // Record match form
   const [matchForm, setMatchForm] = useState({
     tournament_id: "", player1_id: "", player2_id: "",
     player1_score: "", player2_score: "", round: "", group_name: ""
   });
 
-  // Placement form
   const [placementForm, setPlacementForm] = useState({ player_id: "", placement: "" });
 
   useEffect(() => {
@@ -103,6 +100,14 @@ export default function AdminPanel() {
     fetchAll();
   };
 
+  const generateBracket = async (tournamentId: string) => {
+    if (!adminToken) return;
+    const data = await adminAction("generate_bracket", { tournament_id: tournamentId }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success(`Bracket generado: ${data.matches_created} partidos creados`);
+    fetchAll();
+  };
+
   const recordMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminToken) return;
@@ -133,7 +138,7 @@ export default function AdminPanel() {
       placement: placementForm.placement,
     }, adminToken);
     if (data.error) { toast.error(data.error); return; }
-    toast.success(`Puntos de instancia aplicados: ${data.points > 0 ? "+" : ""}${data.points}`);
+    toast.success(`Puntos aplicados: ${data.points > 0 ? "+" : ""}${data.points}`);
     setPlacementForm({ player_id: "", placement: "" });
     fetchAll();
   };
@@ -151,7 +156,6 @@ export default function AdminPanel() {
 
   if (!isAdmin) return null;
 
-  const selectedTournament = tournaments.find(t => t.id === matchForm.tournament_id);
   const tournamentPlayers = matchForm.tournament_id
     ? players.filter(p => (registrations[matchForm.tournament_id] || []).includes(p.id))
     : [];
@@ -160,28 +164,26 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-10">
-        <h1 className="font-heading text-3xl font-bold text-foreground mb-8 flex items-center gap-2">
-          🛡️ Panel de Administración
-        </h1>
+        <h1 className="font-heading text-2xl font-bold text-foreground mb-6">Panel de Admin</h1>
 
-        <div className="grid lg:grid-cols-2 gap-6">
+        <div className="grid lg:grid-cols-2 gap-4">
           {/* Create Tournament */}
-          <div className="glass-card p-6">
-            <h2 className="font-heading font-semibold text-lg text-foreground mb-4 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-primary" /> Crear Torneo
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Crear Torneo
             </h2>
-            <form onSubmit={createTournament} className="space-y-3">
+            <form onSubmit={createTournament} className="space-y-2.5">
               <div>
-                <Label>Nombre</Label>
+                <Label className="text-xs">Nombre</Label>
                 <Input value={newTournament.name} onChange={e => setNewTournament(p => ({...p, name: e.target.value}))} required maxLength={100} />
               </div>
               <div>
-                <Label>Descripción (opcional)</Label>
+                <Label className="text-xs">Descripción (opcional)</Label>
                 <Input value={newTournament.description} onChange={e => setNewTournament(p => ({...p, description: e.target.value}))} maxLength={255} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label>Formato</Label>
+                  <Label className="text-xs">Formato</Label>
                   <Select value={newTournament.format} onValueChange={v => setNewTournament(p => ({...p, format: v}))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -192,7 +194,7 @@ export default function AdminPanel() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Tipo</Label>
+                  <Label className="text-xs">Tipo</Label>
                   <Select value={newTournament.type} onValueChange={v => setNewTournament(p => ({...p, type: v}))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -202,32 +204,30 @@ export default function AdminPanel() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label>Máx. jugadores (opcional)</Label>
+                  <Label className="text-xs">Máx. jugadores</Label>
                   <Input type="number" value={newTournament.max_players} onChange={e => setNewTournament(p => ({...p, max_players: e.target.value}))} />
                 </div>
                 {(newTournament.format === "groups" || newTournament.format === "groups_then_elimination") && (
                   <div>
-                    <Label>Cantidad de grupos</Label>
+                    <Label className="text-xs">Grupos</Label>
                     <Input type="number" value={newTournament.groups_count} onChange={e => setNewTournament(p => ({...p, groups_count: e.target.value}))} min="2" />
                   </div>
                 )}
               </div>
-              <Button type="submit" className="w-full gradient-primary text-primary-foreground">Crear Torneo</Button>
+              <Button type="submit" className="w-full">Crear Torneo</Button>
             </form>
           </div>
 
           {/* Record Match */}
-          <div className="glass-card p-6">
-            <h2 className="font-heading font-semibold text-lg text-foreground mb-4 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-secondary" /> Registrar Partido
-            </h2>
-            <form onSubmit={recordMatch} className="space-y-3">
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Registrar Partido</h2>
+            <form onSubmit={recordMatch} className="space-y-2.5">
               <div>
-                <Label>Torneo</Label>
+                <Label className="text-xs">Torneo</Label>
                 <Select value={matchForm.tournament_id} onValueChange={v => setMatchForm(p => ({...p, tournament_id: v, player1_id: "", player2_id: ""}))}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar torneo" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                   <SelectContent>
                     {tournaments.filter(t => t.status !== "finished").map(t => (
                       <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
@@ -235,9 +235,9 @@ export default function AdminPanel() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label>Jugador 1</Label>
+                  <Label className="text-xs">Jugador 1</Label>
                   <Select value={matchForm.player1_id} onValueChange={v => setMatchForm(p => ({...p, player1_id: v}))}>
                     <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                     <SelectContent>
@@ -248,7 +248,7 @@ export default function AdminPanel() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Jugador 2</Label>
+                  <Label className="text-xs">Jugador 2</Label>
                   <Select value={matchForm.player2_id} onValueChange={v => setMatchForm(p => ({...p, player2_id: v}))}>
                     <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                     <SelectContent>
@@ -259,42 +259,42 @@ export default function AdminPanel() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label>Sets J1</Label>
+                  <Label className="text-xs">Sets J1</Label>
                   <Input type="number" value={matchForm.player1_score} onChange={e => setMatchForm(p => ({...p, player1_score: e.target.value}))} required min="0" />
                 </div>
                 <div>
-                  <Label>Sets J2</Label>
+                  <Label className="text-xs">Sets J2</Label>
                   <Input type="number" value={matchForm.player2_score} onChange={e => setMatchForm(p => ({...p, player2_score: e.target.value}))} required min="0" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label>Ronda (opcional)</Label>
+                  <Label className="text-xs">Ronda</Label>
                   <Input value={matchForm.round} onChange={e => setMatchForm(p => ({...p, round: e.target.value}))} placeholder="ej: Cuartos" />
                 </div>
                 <div>
-                  <Label>Grupo (opcional)</Label>
+                  <Label className="text-xs">Grupo</Label>
                   <Input value={matchForm.group_name} onChange={e => setMatchForm(p => ({...p, group_name: e.target.value}))} placeholder="ej: Grupo A" />
                 </div>
               </div>
-              <Button type="submit" className="w-full gradient-accent text-accent-foreground" disabled={!matchForm.player1_id || !matchForm.player2_id}>
+              <Button type="submit" className="w-full" disabled={!matchForm.player1_id || !matchForm.player2_id}>
                 Registrar Partido
               </Button>
             </form>
           </div>
 
           {/* Placement Points */}
-          <div className="glass-card p-6">
-            <h2 className="font-heading font-semibold text-lg text-foreground mb-4 flex items-center gap-2">
-              <Award className="w-5 h-5 text-secondary" /> Puntos por Instancia
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Award className="w-4 h-4" /> Puntos por Instancia
             </h2>
-            <form onSubmit={addPlacement} className="space-y-3">
+            <form onSubmit={addPlacement} className="space-y-2.5">
               <div>
-                <Label>Jugador</Label>
+                <Label className="text-xs">Jugador</Label>
                 <Select value={placementForm.player_id} onValueChange={v => setPlacementForm(p => ({...p, player_id: v}))}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar jugador" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                   <SelectContent>
                     {players.map(p => (
                       <SelectItem key={p.id} value={p.id}>{p.full_name} ({p.rating})</SelectItem>
@@ -303,7 +303,7 @@ export default function AdminPanel() {
                 </Select>
               </div>
               <div>
-                <Label>Instancia</Label>
+                <Label className="text-xs">Instancia</Label>
                 <Select value={placementForm.placement} onValueChange={v => setPlacementForm(p => ({...p, placement: v}))}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                   <SelectContent>
@@ -320,70 +320,78 @@ export default function AdminPanel() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button type="submit" className="w-full" disabled={!placementForm.player_id || !placementForm.placement}>
+              <Button type="submit" className="w-full" variant="outline" disabled={!placementForm.player_id || !placementForm.placement}>
                 Aplicar Puntos
               </Button>
             </form>
           </div>
 
           {/* Manage Tournaments */}
-          <div className="glass-card p-6">
-            <h2 className="font-heading font-semibold text-lg text-foreground mb-4">Gestionar Torneos</h2>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {tournaments.map(t => (
-                <div key={t.id} className="p-3 rounded-lg bg-muted/30 flex items-center justify-between">
-                  <div>
-                    <span className="font-medium text-sm text-foreground">{t.name}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      ({t.status === "registration" ? "Inscripción" : t.status === "in_progress" ? "En Curso" : "Finalizado"})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {t.status === "registration" && (
-                      <button onClick={() => updateStatus(t.id, "in_progress")} className="p-1.5 rounded-md hover:bg-success/10 text-success" title="Iniciar">
-                        <Play className="w-4 h-4" />
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Gestionar Torneos</h2>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {tournaments.map(t => {
+                const regs = registrations[t.id] || [];
+                return (
+                  <div key={t.id} className="p-3 rounded-md bg-muted/30 flex items-center justify-between">
+                    <div>
+                      <span className="font-medium text-xs text-foreground">{t.name}</span>
+                      <span className="text-xs text-muted-foreground ml-1.5">
+                        {t.status === "registration" ? "Inscripción" : t.status === "in_progress" ? "En Curso" : "Fin"} · {regs.length} jugadores
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      {t.status === "registration" && t.format === "single_elimination" && regs.length >= 2 && (
+                        <button onClick={() => generateBracket(t.id)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Generar bracket">
+                          <Zap className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {t.status === "registration" && (
+                        <button onClick={() => updateStatus(t.id, "in_progress")} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Iniciar">
+                          <Play className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {t.status === "in_progress" && (
+                        <button onClick={() => updateStatus(t.id, "finished")} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Finalizar">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => deleteTournament(t.id)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Eliminar">
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    {t.status === "in_progress" && (
-                      <button onClick={() => updateStatus(t.id, "finished")} className="p-1.5 rounded-md hover:bg-primary/10 text-primary" title="Finalizar">
-                        <CheckCircle className="w-4 h-4" />
-                      </button>
-                    )}
-                    <button onClick={() => deleteTournament(t.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive" title="Eliminar">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
 
-        {/* Register players to tournaments */}
-        <div className="glass-card p-6 mt-6">
-          <h2 className="font-heading font-semibold text-lg text-foreground mb-4">Inscribir Jugadores a Torneos</h2>
-          <div className="grid md:grid-cols-2 gap-6">
+        {/* Register players */}
+        <div className="glass-card p-5 mt-4">
+          <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Inscribir Jugadores</h2>
+          <div className="grid md:grid-cols-2 gap-4">
             {tournaments.filter(t => t.status === "registration").map(t => {
               const regs = registrations[t.id] || [];
               const unregistered = players.filter(p => !regs.includes(p.id));
               return (
-                <div key={t.id} className="p-4 rounded-lg bg-muted/20">
-                  <h3 className="font-semibold text-foreground mb-2">{t.name}</h3>
-                  <p className="text-xs text-muted-foreground mb-3">{regs.length} inscriptos</p>
+                <div key={t.id} className="p-3 rounded-md bg-muted/20">
+                  <h3 className="font-medium text-xs text-foreground mb-1">{t.name}</h3>
+                  <p className="text-xs text-muted-foreground mb-2">{regs.length} inscriptos</p>
                   {unregistered.length > 0 ? (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                    <div className="space-y-0.5 max-h-32 overflow-y-auto">
                       {unregistered.map(p => (
                         <button
                           key={p.id}
                           onClick={() => registerPlayerToTournament(t.id, p.id)}
-                          className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-primary/10 transition-colors"
+                          className="w-full text-left px-2 py-1 text-xs rounded hover:bg-muted transition-colors"
                         >
                           + {p.full_name}
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Todos los jugadores están inscriptos.</p>
+                    <p className="text-xs text-muted-foreground">Todos inscriptos.</p>
                   )}
                 </div>
               );

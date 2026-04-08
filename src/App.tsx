@@ -10,6 +10,7 @@ import Register from "./pages/Register";
 import Rankings from "./pages/Rankings";
 import Tournaments from "./pages/Tournaments";
 import TournamentDetail from "./pages/TournamentDetail";
+import PlayerProfile from "./pages/PlayerProfile";
 import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/rankings" element={<Rankings />} />
             <Route path="/torneos" element={<Tournaments />} />
             <Route path="/torneo/:id" element={<TournamentDetail />} />
+            <Route path="/jugador/:id" element={<PlayerProfile />} />
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
