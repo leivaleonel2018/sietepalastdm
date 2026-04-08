@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { adminAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import { Trophy, Users, Calendar, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
