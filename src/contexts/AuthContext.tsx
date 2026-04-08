@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { authAction } from "@/lib/api";
 
 interface Player {
   id: string;
@@ -33,23 +34,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("tdm_auth", JSON.stringify(auth));
   }, [auth]);
 
-  const invokeFunction = async (name: string, body: Record<string, unknown>) => {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const url = `https://${projectId}.supabase.co/functions/v1/${name}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-      },
-      body: JSON.stringify(body),
-    });
-    return res.json();
-  };
-
   const loginPlayer = async (dni: string, password: string) => {
     try {
-      const data = await invokeFunction("auth", { action: "login", dni, password });
+      const data = await authAction("login", { dni, password });
       if (data.error) return { success: false, error: data.error };
       setAuth({ player: data.player, isAdmin: false, adminToken: null, playerToken: data.token });
       return { success: true };
@@ -60,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginAdmin = async (username: string, password: string) => {
     try {
-      const data = await invokeFunction("auth", { action: "admin_login", username, password });
+      const data = await authAction("admin_login", { username, password });
       if (data.error) return { success: false, error: data.error };
       setAuth({ player: null, isAdmin: true, adminToken: data.token, playerToken: null });
       return { success: true };
@@ -71,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerPlayer = async (full_name: string, dni: string, password: string) => {
     try {
-      const data = await invokeFunction("auth", { action: "register", full_name, dni, password });
+      const data = await authAction("register", { full_name, dni, password });
       if (data.error) return { success: false, error: data.error };
       setAuth({ player: data.player, isAdmin: false, adminToken: null, playerToken: data.token });
       return { success: true };

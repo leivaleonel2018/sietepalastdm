@@ -1,17 +1,18 @@
-const getBaseUrl = () => {
-  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  return `https://${projectId}.supabase.co/functions/v1`;
-};
+import { supabase } from "@/integrations/supabase/client";
 
 export async function adminAction(action: string, data: Record<string, unknown>, adminToken: string) {
-  const res = await fetch(`${getBaseUrl()}/admin`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-      "x-admin-token": adminToken,
-    },
-    body: JSON.stringify({ action, ...data }),
+  const { data: result, error } = await supabase.functions.invoke("admin", {
+    body: { action, ...data },
+    headers: { "x-admin-token": adminToken },
   });
-  return res.json();
+  if (error) return { error: error.message };
+  return result;
+}
+
+export async function authAction(action: string, data: Record<string, unknown>) {
+  const { data: result, error } = await supabase.functions.invoke("auth", {
+    body: { action, ...data },
+  });
+  if (error) return { error: error.message };
+  return result;
 }
