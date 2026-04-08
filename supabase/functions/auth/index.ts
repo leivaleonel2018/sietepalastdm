@@ -122,6 +122,50 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "change_password") {
+      const { player_id, current_password, new_password } = data;
+      if (!player_id || !current_password || !new_password) {
+        return new Response(
+          JSON.stringify({ error: "Todos los campos son obligatorios" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (new_password.length < 6 || new_password.length > 50) {
+        return new Response(
+          JSON.stringify({ error: "La nueva contraseña debe tener entre 6 y 50 caracteres" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const current_hash = await hashPassword(current_password);
+      const { data: player } = await supabase
+        .from("players")
+        .select("id")
+        .eq("id", player_id)
+        .eq("password_hash", current_hash)
+        .single();
+
+      if (!player) {
+        return new Response(
+          JSON.stringify({ error: "La contraseña actual es incorrecta" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const new_hash = await hashPassword(new_password);
+      const { error } = await supabase
+        .from("players")
+        .update({ password_hash: new_hash })
+        .eq("id", player_id);
+
+      if (error) throw error;
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: "Acción no válida" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -33,6 +33,17 @@ interface Match {
   rating_change_p2: number | null;
 }
 
+interface GroupStanding {
+  playerId: string;
+  name: string;
+  played: number;
+  won: number;
+  lost: number;
+  setsFor: number;
+  setsAgainst: number;
+  points: number;
+}
+
 export default function TournamentDetail() {
   const { id } = useParams<{ id: string }>();
   const [tournament, setTournament] = useState<Tournament | null>(null);
@@ -75,11 +86,58 @@ export default function TournamentDetail() {
     groups_then_elimination: "Grupos + Eliminación",
   };
 
-  // Group matches by round for bracket display
-  const roundOrder = ["128vos", "64vos", "32vos", "16vos", "Octavos", "Cuartos", "Semifinal", "Final"];
+  // Separate group matches from elimination matches
+  const groupMatches = matches.filter(m => m.group_name);
+  const eliminationMatches = matches.filter(m => !m.group_name);
+
+  // Build group standings
+  const groupNames = [...new Set(groupMatches.map(m => m.group_name!))].sort();
+  const groupStandings: Record<string, GroupStanding[]> = {};
+
+  groupNames.forEach(gName => {
+    const gMatches = groupMatches.filter(m => m.group_name === gName);
+    const standingsMap: Record<string, GroupStanding> = {};
+
+    gMatches.forEach(m => {
+      const p1 = m.player1_id;
+      const p2 = m.player2_id;
+      if (!p1 || !p2) return;
+
+      if (!standingsMap[p1]) standingsMap[p1] = { playerId: p1, name: playersMap[p1] || "TBD", played: 0, won: 0, lost: 0, setsFor: 0, setsAgainst: 0, points: 0 };
+      if (!standingsMap[p2]) standingsMap[p2] = { playerId: p2, name: playersMap[p2] || "TBD", played: 0, won: 0, lost: 0, setsFor: 0, setsAgainst: 0, points: 0 };
+
+      if (m.player1_score != null && m.player2_score != null) {
+        standingsMap[p1].played++;
+        standingsMap[p2].played++;
+        standingsMap[p1].setsFor += m.player1_score;
+        standingsMap[p1].setsAgainst += m.player2_score;
+        standingsMap[p2].setsFor += m.player2_score;
+        standingsMap[p2].setsAgainst += m.player1_score;
+
+        if (m.winner_id === p1) {
+          standingsMap[p1].won++;
+          standingsMap[p1].points += 2;
+          standingsMap[p2].lost++;
+          standingsMap[p2].points += 1;
+        } else if (m.winner_id === p2) {
+          standingsMap[p2].won++;
+          standingsMap[p2].points += 2;
+          standingsMap[p1].lost++;
+          standingsMap[p1].points += 1;
+        }
+      }
+    });
+
+    groupStandings[gName] = Object.values(standingsMap).sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      return (b.setsFor - b.setsAgainst) - (a.setsFor - a.setsAgainst);
+    });
+  });
+
+  // Group elimination matches by round
   const matchesByRound: Record<string, Match[]> = {};
-  matches.forEach(m => {
-    const key = m.group_name || m.round || "Sin ronda";
+  eliminationMatches.forEach(m => {
+    const key = m.round || "Sin ronda";
     if (!matchesByRound[key]) matchesByRound[key] = [];
     matchesByRound[key].push(m);
   });
@@ -118,37 +176,112 @@ export default function TournamentDetail() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
               {registrations.map(r => (
-                <div key={r.player_id} className="px-3 py-1.5 rounded bg-muted/50 text-xs">
+                <Link key={r.player_id} to={`/jugador/${r.player_id}`} className="px-3 py-1.5 rounded bg-muted/50 text-xs hover:bg-muted transition-colors">
                   <span className="font-medium text-foreground">{r.players?.full_name}</span>
                   <span className="text-muted-foreground ml-1">({r.players?.rating})</span>
-                </div>
+                </Link>
               ))}
             </div>
           )}
         </div>
 
-        {/* Matches by round/group */}
+        {/* Group Standings */}
+        {groupNames.length > 0 && (
+          <div className="space-y-3 mb-4">
+            <h2 className="font-heading font-semibold text-sm text-foreground">Tabla de Posiciones</h2>
+            <div className="grid md:grid-cols-2 gap-3">
+              {groupNames.map(gName => (
+                <div key={gName} className="glass-card overflow-hidden">
+                  <div className="px-4 py-2 bg-muted/50">
+                    <h3 className="font-heading font-semibold text-xs uppercase tracking-wide text-muted-foreground">{gName}</h3>
+                  </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-xs text-muted-foreground">
+                        <th className="text-left px-3 py-1.5 font-semibold">Jugador</th>
+                        <th className="text-center px-1.5 py-1.5 font-semibold">PJ</th>
+                        <th className="text-center px-1.5 py-1.5 font-semibold">PG</th>
+                        <th className="text-center px-1.5 py-1.5 font-semibold">PP</th>
+                        <th className="text-center px-1.5 py-1.5 font-semibold">SF</th>
+                        <th className="text-center px-1.5 py-1.5 font-semibold">SC</th>
+                        <th className="text-center px-1.5 py-1.5 font-semibold">Pts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupStandings[gName].map((s, i) => (
+                        <tr key={s.playerId} className={`border-t border-border/30 text-xs ${i < 2 ? "bg-muted/20" : ""}`}>
+                          <td className="px-3 py-1.5">
+                            <Link to={`/jugador/${s.playerId}`} className="font-medium text-foreground hover:underline">
+                              {s.name}
+                            </Link>
+                          </td>
+                          <td className="text-center px-1.5 py-1.5 text-muted-foreground">{s.played}</td>
+                          <td className="text-center px-1.5 py-1.5 font-medium">{s.won}</td>
+                          <td className="text-center px-1.5 py-1.5 text-muted-foreground">{s.lost}</td>
+                          <td className="text-center px-1.5 py-1.5 text-muted-foreground">{s.setsFor}</td>
+                          <td className="text-center px-1.5 py-1.5 text-muted-foreground">{s.setsAgainst}</td>
+                          <td className="text-center px-1.5 py-1.5 font-semibold">{s.points}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Group Matches */}
+        {groupNames.length > 0 && (
+          <div className="space-y-3 mb-4">
+            <h2 className="font-heading font-semibold text-sm text-foreground">Partidos de Grupo</h2>
+            {groupNames.map(gName => {
+              const gMatches = groupMatches.filter(m => m.group_name === gName);
+              return (
+                <div key={gName} className="glass-card p-4">
+                  <h3 className="font-heading font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">{gName}</h3>
+                  <div className="space-y-1">
+                    {gMatches.map(m => (
+                      <div key={m.id} className="flex items-center justify-between px-3 py-2 rounded bg-muted/30 text-sm">
+                        <span className={`flex-1 ${m.winner_id === m.player1_id ? "font-semibold" : "text-muted-foreground"}`}>
+                          {playersMap[m.player1_id || ""] || "TBD"}
+                        </span>
+                        <span className="font-heading font-bold text-foreground px-3">
+                          {m.player1_score ?? "-"} : {m.player2_score ?? "-"}
+                        </span>
+                        <span className={`flex-1 text-right ${m.winner_id === m.player2_id ? "font-semibold" : "text-muted-foreground"}`}>
+                          {playersMap[m.player2_id || ""] || "TBD"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Elimination Matches */}
         {Object.keys(matchesByRound).length > 0 && (
           <div className="space-y-3">
+            <h2 className="font-heading font-semibold text-sm text-foreground">
+              {groupNames.length > 0 ? "Fase Eliminatoria" : "Partidos"}
+            </h2>
             {Object.entries(matchesByRound).map(([key, roundMatches]) => (
               <div key={key} className="glass-card p-4">
                 <h3 className="font-heading font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">{key}</h3>
                 <div className="space-y-1">
                   {roundMatches.map(m => (
                     <div key={m.id} className="flex items-center justify-between px-3 py-2 rounded bg-muted/30 text-sm">
-                      <div className="flex items-center gap-3 flex-1">
-                        <span className={`${m.winner_id === m.player1_id ? "font-semibold" : "text-muted-foreground"}`}>
-                          {playersMap[m.player1_id || ""] || "TBD"}
-                        </span>
-                      </div>
+                      <span className={`flex-1 ${m.winner_id === m.player1_id ? "font-semibold" : "text-muted-foreground"}`}>
+                        {playersMap[m.player1_id || ""] || "TBD"}
+                      </span>
                       <span className="font-heading font-bold text-foreground px-3">
                         {m.player1_score ?? "-"} : {m.player2_score ?? "-"}
                       </span>
-                      <div className="flex items-center gap-3 flex-1 justify-end">
-                        <span className={`${m.winner_id === m.player2_id ? "font-semibold" : "text-muted-foreground"}`}>
-                          {playersMap[m.player2_id || ""] || "TBD"}
-                        </span>
-                      </div>
+                      <span className={`flex-1 text-right ${m.winner_id === m.player2_id ? "font-semibold" : "text-muted-foreground"}`}>
+                        {playersMap[m.player2_id || ""] || "TBD"}
+                      </span>
                     </div>
                   ))}
                 </div>
