@@ -26,23 +26,23 @@ export default function PointSystemTable() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="glass-card overflow-hidden">
-        <div className="gradient-primary px-6 py-3">
-          <h3 className="text-primary-foreground font-heading font-semibold text-lg">Puntos por Instancia Alcanzada</h3>
+        <div className="nav-dark px-5 py-2.5">
+          <h3 className="text-primary-foreground font-heading font-semibold text-sm">Puntos por Instancia Alcanzada</h3>
         </div>
         <table className="w-full">
           <thead>
             <tr className="bg-muted/50">
-              <th className="text-left px-6 py-3 text-sm font-semibold text-foreground">Instancia</th>
-              <th className="text-center px-6 py-3 text-sm font-semibold text-foreground">Puntos</th>
+              <th className="text-left px-5 py-2.5 text-xs font-semibold text-foreground uppercase tracking-wide">Instancia</th>
+              <th className="text-center px-5 py-2.5 text-xs font-semibold text-foreground uppercase tracking-wide">Puntos</th>
             </tr>
           </thead>
           <tbody>
             {placementPoints.map((row, i) => (
-              <tr key={i} className="border-t border-border/50 hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-3 text-sm">{row.placement}</td>
-                <td className={`px-6 py-3 text-sm text-center font-semibold ${row.points < 0 ? "text-destructive" : "text-success"}`}>
+              <tr key={i} className="border-t border-border/50">
+                <td className="px-5 py-2 text-sm">{row.placement}</td>
+                <td className={`px-5 py-2 text-sm text-center font-medium ${row.points < 0 ? "text-destructive" : "text-foreground"}`}>
                   {row.points > 0 ? `+${row.points}` : row.points}
                 </td>
               </tr>
@@ -52,23 +52,23 @@ export default function PointSystemTable() {
       </div>
 
       <div className="glass-card overflow-hidden">
-        <div className="gradient-accent px-6 py-3">
-          <h3 className="text-accent-foreground font-heading font-semibold text-lg">Puntos por Partido (Rating)</h3>
+        <div className="bg-muted px-5 py-2.5">
+          <h3 className="text-foreground font-heading font-semibold text-sm">Puntos por Partido (Rating)</h3>
         </div>
         <table className="w-full">
           <thead>
-            <tr className="bg-muted/50">
-              <th className="text-left px-6 py-3 text-sm font-semibold">Diferencia de puntos</th>
-              <th className="text-center px-6 py-3 text-sm font-semibold">Gana el mayor</th>
-              <th className="text-center px-6 py-3 text-sm font-semibold">Gana el menor</th>
+            <tr className="bg-muted/30">
+              <th className="text-left px-5 py-2.5 text-xs font-semibold uppercase tracking-wide">Diferencia</th>
+              <th className="text-center px-5 py-2.5 text-xs font-semibold uppercase tracking-wide">Gana mayor</th>
+              <th className="text-center px-5 py-2.5 text-xs font-semibold uppercase tracking-wide">Gana menor</th>
             </tr>
           </thead>
           <tbody>
             {ratingChanges.map((row, i) => (
-              <tr key={i} className="border-t border-border/50 hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-3 text-sm">{row.diff}</td>
-                <td className="px-6 py-3 text-sm text-center font-semibold text-success">±{row.higher}</td>
-                <td className="px-6 py-3 text-sm text-center font-semibold text-secondary">±{row.lower}</td>
+              <tr key={i} className="border-t border-border/50">
+                <td className="px-5 py-2 text-sm">{row.diff}</td>
+                <td className="px-5 py-2 text-sm text-center font-medium">±{row.higher}</td>
+                <td className="px-5 py-2 text-sm text-center font-medium">±{row.lower}</td>
               </tr>
             ))}
           </tbody>

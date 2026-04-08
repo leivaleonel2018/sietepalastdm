@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
-import { Trophy, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Trophy } from "lucide-react";
 
 interface Player {
   id: string;
@@ -24,22 +25,48 @@ export default function Rankings() {
       });
   }, []);
 
-  const getMedal = (pos: number) => {
-    if (pos === 0) return "🥇";
-    if (pos === 1) return "🥈";
-    if (pos === 2) return "🥉";
-    return null;
+  const exportPDF = async () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const rows = players.map((p, i) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">${i + 1}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee">${p.full_name}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:600">${p.rating}</td>
+      </tr>
+    `).join('');
+
+    printWindow.document.write(`
+      <html><head><title>Rankings - TDM Siete Palmas</title>
+      <style>body{font-family:sans-serif;padding:40px;color:#222}
+      h1{font-size:20px;margin-bottom:4px}p{color:#666;margin-bottom:20px;font-size:13px}
+      table{width:100%;border-collapse:collapse}
+      th{padding:8px 12px;border-bottom:2px solid #222;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:0.5px}
+      </style></head><body>
+      <h1>🏓 Rankings - TDM Siete Palmas</h1>
+      <p>Generado el ${new Date().toLocaleDateString('es-AR')}</p>
+      <table>
+        <thead><tr><th style="text-align:center">#</th><th>Jugador</th><th style="text-align:center">Rating</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <script>setTimeout(()=>window.print(),300)</script>
+      </body></html>
+    `);
+    printWindow.document.close();
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-10">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center text-accent-foreground">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <h1 className="font-heading text-3xl font-bold text-foreground">Rankings</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="font-heading text-2xl font-bold text-foreground">Rankings</h1>
+          {players.length > 0 && (
+            <button onClick={exportPDF} className="text-sm px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
+              Exportar PDF
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -51,28 +78,24 @@ export default function Rankings() {
             <table className="w-full">
               <thead>
                 <tr className="bg-muted/50">
-                  <th className="text-center px-4 py-3 text-sm font-semibold w-16">#</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Jugador</th>
-                  <th className="text-center px-4 py-3 text-sm font-semibold">Rating</th>
+                  <th className="text-center px-4 py-2.5 text-xs font-semibold uppercase tracking-wide w-16">#</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide">Jugador</th>
+                  <th className="text-center px-4 py-2.5 text-xs font-semibold uppercase tracking-wide">Rating</th>
                 </tr>
               </thead>
               <tbody>
                 {players.map((player, i) => (
                   <tr key={player.id} className="border-t border-border/50 hover:bg-muted/30 transition-colors">
-                    <td className="text-center px-4 py-3 text-sm font-medium">
-                      {getMedal(i) || i + 1}
+                    <td className="text-center px-4 py-2.5 text-sm font-medium text-muted-foreground">
+                      {i + 1}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-foreground">{player.full_name}</span>
+                    <td className="px-4 py-2.5">
+                      <Link to={`/jugador/${player.id}`} className="font-medium text-foreground hover:underline">
+                        {player.full_name}
+                      </Link>
                     </td>
-                    <td className="text-center px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${
-                        player.rating >= 800 ? "bg-secondary/20 text-secondary" :
-                        player.rating >= 600 ? "bg-success/20 text-success" :
-                        "bg-muted text-muted-foreground"
-                      }`}>
-                        {player.rating}
-                      </span>
+                    <td className="text-center px-4 py-2.5">
+                      <span className="text-sm font-semibold text-foreground">{player.rating}</span>
                     </td>
                   </tr>
                 ))}
