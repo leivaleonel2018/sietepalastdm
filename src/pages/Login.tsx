@@ -78,11 +78,11 @@ export default function Login() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Ingresando..." : "Ingresar"}
               </Button>
               <p className="text-center text-sm text-muted-foreground">
-                ¿No tenés cuenta? <Link to="/registro" className="text-secondary font-medium hover:underline">Registrate</Link>
+                ¿No tenés cuenta? <Link to="/registro" className="text-foreground font-medium hover:underline">Registrate</Link>
               </p>
             </form>
           </TabsContent>
