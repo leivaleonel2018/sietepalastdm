@@ -110,7 +110,7 @@ export default function Login() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full gradient-accent text-accent-foreground" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Ingresando..." : "Ingresar como Admin"}
               </Button>
             </form>

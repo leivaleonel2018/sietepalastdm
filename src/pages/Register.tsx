@@ -91,11 +91,11 @@ export default function Register() {
             <div className="bg-muted/50 rounded-lg p-3 text-sm text-muted-foreground">
               🏓 Al registrarte recibirás un rating inicial de <strong className="text-foreground">600 puntos</strong>.
             </div>
-            <Button type="submit" className="w-full gradient-primary text-primary-foreground" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Registrando..." : "Registrarme"}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              ¿Ya tenés cuenta? <Link to="/login" className="text-secondary font-medium hover:underline">Ingresá</Link>
+              ¿Ya tenés cuenta? <Link to="/login" className="text-foreground font-medium hover:underline">Ingresá</Link>
             </p>
           </form>
         </div>
