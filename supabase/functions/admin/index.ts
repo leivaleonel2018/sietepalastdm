@@ -190,6 +190,88 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action === "generate_bracket") {
+      const { tournament_id } = data;
+      
+      // Get registered players with ratings
+      const { data: regs } = await supabase
+        .from("tournament_registrations")
+        .select("player_id, players(id, full_name, rating)")
+        .eq("tournament_id", tournament_id);
+      
+      if (!regs || regs.length < 2) {
+        return new Response(
+          JSON.stringify({ error: "Se necesitan al menos 2 jugadores" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Sort by rating descending for seeding
+      const sortedPlayers = regs
+        .map((r: any) => r.players)
+        .filter(Boolean)
+        .sort((a: any, b: any) => b.rating - a.rating);
+
+      // Pad to next power of 2
+      const n = sortedPlayers.length;
+      let bracketSize = 1;
+      while (bracketSize < n) bracketSize *= 2;
+
+      // Create seeded bracket (1v last, 2v second-to-last, etc.)
+      const seeded: (any | null)[] = new Array(bracketSize).fill(null);
+      for (let i = 0; i < n; i++) {
+        seeded[i] = sortedPlayers[i];
+      }
+
+      // Determine round names
+      const roundNames: Record<number, string> = {
+        2: "Final",
+        4: "Semifinal",
+        8: "Cuartos",
+        16: "Octavos",
+        32: "16vos",
+        64: "32vos",
+        128: "64vos",
+        256: "128vos",
+      };
+
+      // Generate first round matches
+      const firstRoundMatches = [];
+      const roundName = roundNames[bracketSize] || `Ronda de ${bracketSize}`;
+      
+      for (let i = 0; i < bracketSize / 2; i++) {
+        const p1 = seeded[i];
+        const p2 = seeded[bracketSize - 1 - i];
+        
+        // Only create match if at least one player exists
+        if (p1 || p2) {
+          firstRoundMatches.push({
+            tournament_id,
+            player1_id: p1?.id || null,
+            player2_id: p2?.id || null,
+            round: roundName,
+            match_order: i + 1,
+            // Auto-win if opponent is null (bye)
+            ...(p1 && !p2 ? { winner_id: p1.id, player1_score: 3, player2_score: 0 } : {}),
+            ...(!p1 && p2 ? { winner_id: p2.id, player1_score: 0, player2_score: 3 } : {}),
+          });
+        }
+      }
+
+      if (firstRoundMatches.length > 0) {
+        const { error } = await supabase.from("matches").insert(firstRoundMatches);
+        if (error) throw error;
+      }
+
+      // Update tournament status
+      await supabase.from("tournaments").update({ status: "in_progress" }).eq("id", tournament_id);
+
+      return new Response(
+        JSON.stringify({ success: true, matches_created: firstRoundMatches.length }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ error: "Acción no válida" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
