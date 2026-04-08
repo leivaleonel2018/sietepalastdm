@@ -68,22 +68,11 @@ export default function Tournaments() {
       return;
     }
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      // Players can register themselves - use the auth edge function for this
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/admin`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          "x-admin-token": "admin_token", // Registration is allowed
-        },
-        body: JSON.stringify({
-          action: "register_player_tournament",
-          tournament_id: tournamentId,
-          player_id: player.id,
-        }),
-      });
-      const data = await res.json();
+      // Use admin action for tournament registration
+      const data = await adminAction("register_player_tournament", {
+        tournament_id: tournamentId,
+        player_id: player.id,
+      }, "admin_token");
       if (data.error) {
         toast.error(data.error);
       } else {
