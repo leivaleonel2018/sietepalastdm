@@ -14,6 +14,7 @@ export default function Navbar() {
     { to: "/", label: "Inicio", icon: null },
     { to: "/rankings", label: "Rankings", icon: <Users className="w-4 h-4" /> },
     { to: "/torneos", label: "Torneos", icon: <Trophy className="w-4 h-4" /> },
+    { to: "/desafios", label: "Desafíos", icon: <Swords className="w-4 h-4" /> },
   ];
 
   return (
