@@ -4,6 +4,13 @@ const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-
 const ADMIN_USERNAME = "leiva leonel";
 const ADMIN_PASSWORD = "Leonelsl15";
 
+function respond(data: Record<string, unknown>) {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password + "tdm_siete_palmas_salt");
@@ -29,19 +36,12 @@ Deno.serve(async (req) => {
     if (action === "register") {
       const { full_name, dni, password } = data;
       if (!full_name || !dni || !password) {
-        return new Response(
-          JSON.stringify({ error: "Todos los campos son obligatorios" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "Todos los campos son obligatorios" });
       }
       if (full_name.length > 100 || dni.length > 20 || password.length < 6 || password.length > 50) {
-        return new Response(
-          JSON.stringify({ error: "Datos inválidos. La contraseña debe tener al menos 6 caracteres." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "Datos inválidos. La contraseña debe tener al menos 6 caracteres." });
       }
 
-      // Check existing
       const { data: existing } = await supabase
         .from("players")
         .select("id")
@@ -49,10 +49,7 @@ Deno.serve(async (req) => {
         .limit(1);
 
       if (existing && existing.length > 0) {
-        return new Response(
-          JSON.stringify({ error: "Ya existe un jugador con ese nombre o DNI" }),
-          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "Ya existe un jugador con ese nombre o DNI" });
       }
 
       const password_hash = await hashPassword(password);
@@ -63,28 +60,19 @@ Deno.serve(async (req) => {
         .single();
 
       if (error) {
-        const msg = error.message.includes("unique") 
-          ? "Ya existe un jugador con ese nombre o DNI" 
+        const msg = error.message.includes("unique")
+          ? "Ya existe un jugador con ese nombre o DNI"
           : "Error al registrar";
-        return new Response(
-          JSON.stringify({ error: msg }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: msg });
       }
 
-      return new Response(
-        JSON.stringify({ player, token: player.id }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ player, token: player.id });
     }
 
     if (action === "login") {
       const { dni, password } = data;
       if (!dni || !password) {
-        return new Response(
-          JSON.stringify({ error: "DNI y contraseña son obligatorios" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "DNI y contraseña son obligatorios" });
       }
 
       const password_hash = await hashPassword(password);
@@ -96,45 +84,27 @@ Deno.serve(async (req) => {
         .single();
 
       if (!player) {
-        return new Response(
-          JSON.stringify({ error: "DNI o contraseña incorrectos" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "DNI o contraseña incorrectos" });
       }
 
-      return new Response(
-        JSON.stringify({ player, token: player.id }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ player, token: player.id });
     }
 
     if (action === "admin_login") {
       const { username, password } = data;
       if (username?.toLowerCase() === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        return new Response(
-          JSON.stringify({ admin: true, token: "admin_token" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ admin: true, token: "admin_token" });
       }
-      return new Response(
-        JSON.stringify({ error: "Credenciales de admin incorrectas" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ error: "Credenciales de admin incorrectas" });
     }
 
     if (action === "change_password") {
       const { player_id, current_password, new_password } = data;
       if (!player_id || !current_password || !new_password) {
-        return new Response(
-          JSON.stringify({ error: "Todos los campos son obligatorios" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "Todos los campos son obligatorios" });
       }
       if (new_password.length < 6 || new_password.length > 50) {
-        return new Response(
-          JSON.stringify({ error: "La nueva contraseña debe tener entre 6 y 50 caracteres" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "La nueva contraseña debe tener entre 6 y 50 caracteres" });
       }
 
       const current_hash = await hashPassword(current_password);
@@ -146,10 +116,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (!player) {
-        return new Response(
-          JSON.stringify({ error: "La contraseña actual es incorrecta" }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return respond({ error: "La contraseña actual es incorrecta" });
       }
 
       const new_hash = await hashPassword(new_password);
@@ -160,20 +127,11 @@ Deno.serve(async (req) => {
 
       if (error) throw error;
 
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ success: true });
     }
 
-    return new Response(
-      JSON.stringify({ error: "Acción no válida" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return respond({ error: "Acción no válida" });
   } catch (e) {
-    return new Response(
-      JSON.stringify({ error: "Error interno del servidor" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return respond({ error: "Error interno del servidor" });
   }
 });
