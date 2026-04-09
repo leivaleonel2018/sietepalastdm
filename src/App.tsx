@@ -12,6 +12,7 @@ import Tournaments from "./pages/Tournaments";
 import TournamentDetail from "./pages/TournamentDetail";
 import PlayerProfile from "./pages/PlayerProfile";
 import AdminPanel from "./pages/AdminPanel";
+import Challenges from "./pages/Challenges";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/torneo/:id" element={<TournamentDetail />} />
             <Route path="/jugador/:id" element={<PlayerProfile />} />
             <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/desafios" element={<Challenges />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

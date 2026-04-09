@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminAction } from "@/lib/api";
@@ -9,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, Play, CheckCircle, Award, Zap } from "lucide-react";
+import { Plus, Trash2, Play, CheckCircle, Award, Zap, LogIn, Swords } from "lucide-react";
 
 interface Tournament {
   id: string;
@@ -28,13 +27,30 @@ interface Player {
   rating: number;
 }
 
+interface Challenge {
+  id: string;
+  challenger_id: string;
+  challenged_id: string;
+  status: string;
+  created_at: string;
+}
+
+interface SetScore {
+  p1: string;
+  p2: string;
+}
+
 export default function AdminPanel() {
-  const { isAdmin, adminToken } = useAuth();
-  const navigate = useNavigate();
+  const { isAdmin, adminToken, loginAdmin } = useAuth();
+
+  // Admin login form
+  const [adminForm, setAdminForm] = useState({ username: "", password: "" });
+  const [loginLoading, setLoginLoading] = useState(false);
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [registrations, setRegistrations] = useState<Record<string, string[]>>({});
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
 
   const [newTournament, setNewTournament] = useState({
     name: "", description: "", format: "single_elimination", type: "singles",
@@ -43,30 +59,47 @@ export default function AdminPanel() {
 
   const [matchForm, setMatchForm] = useState({
     tournament_id: "", player1_id: "", player2_id: "",
-    player1_score: "", player2_score: "", round: "", group_name: ""
+    round: "", group_name: ""
   });
+  const [matchSets, setMatchSets] = useState<SetScore[]>([{ p1: "", p2: "" }]);
+
+  const [challengeResultForm, setChallengeResultForm] = useState({ challenge_id: "" });
+  const [challengeSets, setChallengeSets] = useState<SetScore[]>([{ p1: "", p2: "" }]);
 
   const [placementForm, setPlacementForm] = useState({ player_id: "", placement: "" });
 
   useEffect(() => {
-    if (!isAdmin) { navigate("/login"); return; }
-    fetchAll();
+    if (isAdmin) fetchAll();
   }, [isAdmin]);
 
   const fetchAll = async () => {
-    const [t, p, r] = await Promise.all([
+    const [t, p, r, c] = await Promise.all([
       supabase.from("tournaments").select("*").order("created_at", { ascending: false }),
       supabase.from("players").select("id, full_name, rating").order("full_name"),
       supabase.from("tournament_registrations").select("tournament_id, player_id"),
+      supabase.from("challenges").select("*").eq("status", "accepted").order("created_at", { ascending: false }),
     ]);
     setTournaments(t.data || []);
     setPlayers(p.data || []);
     const regsMap: Record<string, string[]> = {};
-    (r.data || []).forEach(reg => {
+    (r.data || []).forEach((reg: any) => {
       if (!regsMap[reg.tournament_id]) regsMap[reg.tournament_id] = [];
       regsMap[reg.tournament_id].push(reg.player_id);
     });
     setRegistrations(regsMap);
+    setChallenges((c.data || []) as Challenge[]);
+  };
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    const result = await loginAdmin(adminForm.username, adminForm.password);
+    setLoginLoading(false);
+    if (result.success) {
+      toast.success("¡Bienvenido, Admin!");
+    } else {
+      toast.error(result.error);
+    }
   };
 
   const createTournament = async (e: React.FormEvent) => {
@@ -115,18 +148,44 @@ export default function AdminPanel() {
       toast.error("Los jugadores deben ser diferentes");
       return;
     }
+    const validSets = matchSets.filter(s => s.p1 !== "" && s.p2 !== "");
+    if (validSets.length === 0) {
+      toast.error("Agregá al menos un set");
+      return;
+    }
+    const set_scores = validSets.map(s => ({ p1: parseInt(s.p1), p2: parseInt(s.p2) }));
     const data = await adminAction("record_match", {
       tournament_id: matchForm.tournament_id,
       player1_id: matchForm.player1_id,
       player2_id: matchForm.player2_id,
-      player1_score: parseInt(matchForm.player1_score),
-      player2_score: parseInt(matchForm.player2_score),
+      set_scores,
       round: matchForm.round || null,
       group_name: matchForm.group_name || null,
     }, adminToken);
     if (data.error) { toast.error(data.error); return; }
     toast.success("Partido registrado. Ratings actualizados.");
-    setMatchForm({ tournament_id: matchForm.tournament_id, player1_id: "", player2_id: "", player1_score: "", player2_score: "", round: "", group_name: "" });
+    setMatchForm({ tournament_id: matchForm.tournament_id, player1_id: "", player2_id: "", round: "", group_name: "" });
+    setMatchSets([{ p1: "", p2: "" }]);
+    fetchAll();
+  };
+
+  const recordChallengeResult = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    const validSets = challengeSets.filter(s => s.p1 !== "" && s.p2 !== "");
+    if (validSets.length === 0) {
+      toast.error("Agregá al menos un set");
+      return;
+    }
+    const set_scores = validSets.map(s => ({ p1: parseInt(s.p1), p2: parseInt(s.p2) }));
+    const data = await adminAction("record_challenge_result", {
+      challenge_id: challengeResultForm.challenge_id,
+      set_scores,
+    }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Resultado de desafío registrado");
+    setChallengeResultForm({ challenge_id: "" });
+    setChallengeSets([{ p1: "", p2: "" }]);
     fetchAll();
   };
 
@@ -154,11 +213,99 @@ export default function AdminPanel() {
     fetchAll();
   };
 
-  if (!isAdmin) return null;
+  const renderSetInputs = (sets: SetScore[], setSets: (s: SetScore[]) => void) => (
+    <div className="space-y-1.5">
+      <Label className="text-xs">Sets (puntaje por set)</Label>
+      {sets.map((set, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground w-6">S{i + 1}</span>
+          <Input
+            type="number"
+            placeholder="J1"
+            value={set.p1}
+            onChange={e => {
+              const n = [...sets];
+              n[i] = { ...n[i], p1: e.target.value };
+              setSets(n);
+            }}
+            className="w-20"
+            min="0"
+          />
+          <span className="text-xs text-muted-foreground">-</span>
+          <Input
+            type="number"
+            placeholder="J2"
+            value={set.p2}
+            onChange={e => {
+              const n = [...sets];
+              n[i] = { ...n[i], p2: e.target.value };
+              setSets(n);
+            }}
+            className="w-20"
+            min="0"
+          />
+          {sets.length > 1 && (
+            <button type="button" onClick={() => setSets(sets.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive text-xs">✕</button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => setSets([...sets, { p1: "", p2: "" }])}
+        className="text-xs text-muted-foreground hover:text-foreground"
+      >
+        + Agregar set
+      </button>
+    </div>
+  );
+
+  // If not admin, show login form
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 py-16 max-w-sm">
+          <h1 className="font-heading text-2xl font-bold text-foreground text-center mb-6">Panel de Admin</h1>
+          <div className="glass-card p-6">
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <Label htmlFor="admin-user">Usuario</Label>
+                <Input
+                  id="admin-user"
+                  value={adminForm.username}
+                  onChange={e => setAdminForm(p => ({ ...p, username: e.target.value }))}
+                  placeholder="Usuario admin"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="admin-pass">Contraseña</Label>
+                <Input
+                  id="admin-pass"
+                  type="password"
+                  value={adminForm.password}
+                  onChange={e => setAdminForm(p => ({ ...p, password: e.target.value }))}
+                  placeholder="Contraseña admin"
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loginLoading}>
+                <LogIn className="w-4 h-4 mr-1" />
+                {loginLoading ? "Ingresando..." : "Ingresar como Admin"}
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const tournamentPlayers = matchForm.tournament_id
     ? players.filter(p => (registrations[matchForm.tournament_id] || []).includes(p.id))
     : [];
+
+  const selectedChallenge = challenges.find(c => c.id === challengeResultForm.challenge_id);
+  const getPlayerName = (pid: string) => players.find(p => p.id === pid)?.full_name || "?";
 
   return (
     <div className="min-h-screen bg-background">
@@ -259,16 +406,7 @@ export default function AdminPanel() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">Sets J1</Label>
-                  <Input type="number" value={matchForm.player1_score} onChange={e => setMatchForm(p => ({...p, player1_score: e.target.value}))} required min="0" />
-                </div>
-                <div>
-                  <Label className="text-xs">Sets J2</Label>
-                  <Input type="number" value={matchForm.player2_score} onChange={e => setMatchForm(p => ({...p, player2_score: e.target.value}))} required min="0" />
-                </div>
-              </div>
+              {renderSetInputs(matchSets, setMatchSets)}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">Ronda</Label>
@@ -283,6 +421,41 @@ export default function AdminPanel() {
                 Registrar Partido
               </Button>
             </form>
+          </div>
+
+          {/* Challenge Results */}
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+              <Swords className="w-4 h-4" /> Resultado de Desafío
+            </h2>
+            {challenges.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No hay desafíos aceptados pendientes de resultado.</p>
+            ) : (
+              <form onSubmit={recordChallengeResult} className="space-y-2.5">
+                <div>
+                  <Label className="text-xs">Desafío</Label>
+                  <Select value={challengeResultForm.challenge_id} onValueChange={v => setChallengeResultForm({ challenge_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Seleccionar desafío" /></SelectTrigger>
+                    <SelectContent>
+                      {challenges.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {getPlayerName(c.challenger_id)} vs {getPlayerName(c.challenged_id)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedChallenge && (
+                  <p className="text-xs text-muted-foreground">
+                    J1: {getPlayerName(selectedChallenge.challenger_id)} — J2: {getPlayerName(selectedChallenge.challenged_id)}
+                  </p>
+                )}
+                {renderSetInputs(challengeSets, setChallengeSets)}
+                <Button type="submit" className="w-full" disabled={!challengeResultForm.challenge_id}>
+                  Registrar Resultado
+                </Button>
+              </form>
+            )}
           </div>
 
           {/* Placement Points */}
@@ -365,37 +538,37 @@ export default function AdminPanel() {
               })}
             </div>
           </div>
-        </div>
 
-        {/* Register players */}
-        <div className="glass-card p-5 mt-4">
-          <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Inscribir Jugadores</h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            {tournaments.filter(t => t.status === "registration").map(t => {
-              const regs = registrations[t.id] || [];
-              const unregistered = players.filter(p => !regs.includes(p.id));
-              return (
-                <div key={t.id} className="p-3 rounded-md bg-muted/20">
-                  <h3 className="font-medium text-xs text-foreground mb-1">{t.name}</h3>
-                  <p className="text-xs text-muted-foreground mb-2">{regs.length} inscriptos</p>
-                  {unregistered.length > 0 ? (
-                    <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                      {unregistered.map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => registerPlayerToTournament(t.id, p.id)}
-                          className="w-full text-left px-2 py-1 text-xs rounded hover:bg-muted transition-colors"
-                        >
-                          + {p.full_name}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Todos inscriptos.</p>
-                  )}
-                </div>
-              );
-            })}
+          {/* Register players */}
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Inscribir Jugadores</h2>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {tournaments.filter(t => t.status === "registration").map(t => {
+                const regs = registrations[t.id] || [];
+                const unregistered = players.filter(p => !regs.includes(p.id));
+                return (
+                  <div key={t.id} className="p-3 rounded-md bg-muted/20">
+                    <h3 className="font-medium text-xs text-foreground mb-1">{t.name}</h3>
+                    <p className="text-xs text-muted-foreground mb-2">{regs.length} inscriptos</p>
+                    {unregistered.length > 0 ? (
+                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                        {unregistered.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => registerPlayerToTournament(t.id, p.id)}
+                            className="w-full text-left px-2 py-1 text-xs rounded hover:bg-muted transition-colors"
+                          >
+                            + {p.full_name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Todos inscriptos.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

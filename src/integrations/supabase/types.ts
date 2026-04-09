@@ -14,6 +14,70 @@ export type Database = {
   }
   public: {
     Tables: {
+      challenges: {
+        Row: {
+          challenged_id: string
+          challenged_sets_won: number | null
+          challenger_id: string
+          challenger_sets_won: number | null
+          created_at: string
+          id: string
+          rating_change_challenged: number | null
+          rating_change_challenger: number | null
+          set_scores: Json | null
+          status: string
+          winner_id: string | null
+        }
+        Insert: {
+          challenged_id: string
+          challenged_sets_won?: number | null
+          challenger_id: string
+          challenger_sets_won?: number | null
+          created_at?: string
+          id?: string
+          rating_change_challenged?: number | null
+          rating_change_challenger?: number | null
+          set_scores?: Json | null
+          status?: string
+          winner_id?: string | null
+        }
+        Update: {
+          challenged_id?: string
+          challenged_sets_won?: number | null
+          challenger_id?: string
+          challenger_sets_won?: number | null
+          created_at?: string
+          id?: string
+          rating_change_challenged?: number | null
+          rating_change_challenger?: number | null
+          set_scores?: Json | null
+          status?: string
+          winner_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challenges_challenged_id_fkey"
+            columns: ["challenged_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenges_challenger_id_fkey"
+            columns: ["challenger_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenges_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       matches: {
         Row: {
           created_at: string
@@ -28,6 +92,7 @@ export type Database = {
           rating_change_p1: number | null
           rating_change_p2: number | null
           round: string | null
+          set_scores: Json | null
           tournament_id: string
           winner_id: string | null
         }
@@ -44,6 +109,7 @@ export type Database = {
           rating_change_p1?: number | null
           rating_change_p2?: number | null
           round?: string | null
+          set_scores?: Json | null
           tournament_id: string
           winner_id?: string | null
         }
@@ -60,6 +126,7 @@ export type Database = {
           rating_change_p1?: number | null
           rating_change_p2?: number | null
           round?: string | null
+          set_scores?: Json | null
           tournament_id?: string
           winner_id?: string | null
         }
