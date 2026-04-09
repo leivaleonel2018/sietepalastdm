@@ -12,6 +12,7 @@ import Tournaments from "./pages/Tournaments";
 import TournamentDetail from "./pages/TournamentDetail";
 import PlayerProfile from "./pages/PlayerProfile";
 import AdminPanel from "./pages/AdminPanel";
+import Challenges from "./pages/Challenges";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
