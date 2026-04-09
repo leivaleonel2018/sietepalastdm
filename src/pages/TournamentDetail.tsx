@@ -242,19 +242,25 @@ export default function TournamentDetail() {
                 <div key={gName} className="glass-card p-4">
                   <h3 className="font-heading font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">{gName}</h3>
                   <div className="space-y-1">
-                    {gMatches.map(m => (
-                      <div key={m.id} className="flex items-center justify-between px-3 py-2 rounded bg-muted/30 text-sm">
-                        <span className={`flex-1 ${m.winner_id === m.player1_id ? "font-semibold" : "text-muted-foreground"}`}>
-                          {playersMap[m.player1_id || ""] || "TBD"}
-                        </span>
-                        <span className="font-heading font-bold text-foreground px-3">
-                          {m.player1_score ?? "-"} : {m.player2_score ?? "-"}
-                        </span>
-                        <span className={`flex-1 text-right ${m.winner_id === m.player2_id ? "font-semibold" : "text-muted-foreground"}`}>
-                          {playersMap[m.player2_id || ""] || "TBD"}
-                        </span>
-                      </div>
-                    ))}
+                    {gMatches.map(m => {
+                      const setDetail = m.set_scores ? (m.set_scores as Array<{p1:number;p2:number}>).map((s: any) => `${s.p1}-${s.p2}`).join(", ") : "";
+                      return (
+                        <div key={m.id} className="px-3 py-2 rounded bg-muted/30 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className={`flex-1 ${m.winner_id === m.player1_id ? "font-semibold" : "text-muted-foreground"}`}>
+                              {playersMap[m.player1_id || ""] || "TBD"}
+                            </span>
+                            <span className="font-heading font-bold text-foreground px-3">
+                              {m.player1_score ?? "-"} : {m.player2_score ?? "-"}
+                            </span>
+                            <span className={`flex-1 text-right ${m.winner_id === m.player2_id ? "font-semibold" : "text-muted-foreground"}`}>
+                              {playersMap[m.player2_id || ""] || "TBD"}
+                            </span>
+                          </div>
+                          {setDetail && <p className="text-xs text-muted-foreground mt-0.5 text-center">{setDetail}</p>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
