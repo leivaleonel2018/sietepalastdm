@@ -31,7 +31,7 @@ interface Match {
   group_name: string | null;
   rating_change_p1: number | null;
   rating_change_p2: number | null;
-  set_scores: Array<{p1: number; p2: number}> | null;
+  set_scores: any;
 }
 
 interface GroupStanding {
