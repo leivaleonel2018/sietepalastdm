@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trophy, Users, LogIn, LogOut, Shield, Menu, X } from "lucide-react";
+import { Trophy, Users, LogIn, LogOut, Shield, Menu, X, Swords } from "lucide-react";
 import { useState } from "react";
 
 export default function Navbar() {
