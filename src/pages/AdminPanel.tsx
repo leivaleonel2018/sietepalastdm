@@ -6,9 +6,10 @@ import Navbar from "@/components/Navbar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, Play, CheckCircle, Award, Zap, LogIn, Swords } from "lucide-react";
+import { Plus, Trash2, Play, CheckCircle, Award, Zap, LogIn, Newspaper, Image, Trophy, Users } from "lucide-react";
 
 interface Tournament {
   id: string;
@@ -27,44 +28,33 @@ interface Player {
   rating: number;
 }
 
-interface Challenge {
+interface NewsItem {
   id: string;
-  challenger_id: string;
-  challenged_id: string;
-  status: string;
+  title: string;
+  content: string;
+  image_url: string | null;
   created_at: string;
-}
-
-interface SetScore {
-  p1: string;
-  p2: string;
 }
 
 export default function AdminPanel() {
   const { isAdmin, adminToken, loginAdmin } = useAuth();
-
-  // Admin login form
   const [adminForm, setAdminForm] = useState({ username: "", password: "" });
   const [loginLoading, setLoginLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"tournaments" | "news" | "players">("tournaments");
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [registrations, setRegistrations] = useState<Record<string, string[]>>({});
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [news, setNews] = useState<NewsItem[]>([]);
 
   const [newTournament, setNewTournament] = useState({
     name: "", description: "", format: "single_elimination", type: "singles",
     max_players: "", groups_count: "4"
   });
 
-  const [matchForm, setMatchForm] = useState({
-    tournament_id: "", player1_id: "", player2_id: "",
-    round: "", group_name: ""
-  });
-  const [matchSets, setMatchSets] = useState<SetScore[]>([{ p1: "", p2: "" }]);
-
-  const [challengeResultForm, setChallengeResultForm] = useState({ challenge_id: "" });
-  const [challengeSets, setChallengeSets] = useState<SetScore[]>([{ p1: "", p2: "" }]);
+  const [newsForm, setNewsForm] = useState({ title: "", content: "" });
+  const [newsImage, setNewsImage] = useState<File | null>(null);
+  const [newsLoading, setNewsLoading] = useState(false);
 
   const [placementForm, setPlacementForm] = useState({ player_id: "", placement: "" });
 
@@ -73,11 +63,11 @@ export default function AdminPanel() {
   }, [isAdmin]);
 
   const fetchAll = async () => {
-    const [t, p, r, c] = await Promise.all([
+    const [t, p, r, n] = await Promise.all([
       supabase.from("tournaments").select("*").order("created_at", { ascending: false }),
       supabase.from("players").select("id, full_name, rating").order("full_name"),
       supabase.from("tournament_registrations").select("tournament_id, player_id"),
-      supabase.from("challenges").select("*").eq("status", "accepted").order("created_at", { ascending: false }),
+      supabase.from("news").select("*").order("created_at", { ascending: false }),
     ]);
     setTournaments(t.data || []);
     setPlayers(p.data || []);
@@ -87,7 +77,7 @@ export default function AdminPanel() {
       regsMap[reg.tournament_id].push(reg.player_id);
     });
     setRegistrations(regsMap);
-    setChallenges((c.data || []) as Challenge[]);
+    setNews((n.data || []) as NewsItem[]);
   };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -95,11 +85,8 @@ export default function AdminPanel() {
     setLoginLoading(true);
     const result = await loginAdmin(adminForm.username, adminForm.password);
     setLoginLoading(false);
-    if (result.success) {
-      toast.success("¡Bienvenido, Admin!");
-    } else {
-      toast.error(result.error);
-    }
+    if (result.success) toast.success("¡Bienvenido, Admin!");
+    else toast.error(result.error);
   };
 
   const createTournament = async (e: React.FormEvent) => {
@@ -137,55 +124,7 @@ export default function AdminPanel() {
     if (!adminToken) return;
     const data = await adminAction("generate_bracket", { tournament_id: tournamentId }, adminToken);
     if (data.error) { toast.error(data.error); return; }
-    toast.success(`Bracket generado: ${data.matches_created} partidos creados`);
-    fetchAll();
-  };
-
-  const recordMatch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!adminToken) return;
-    if (matchForm.player1_id === matchForm.player2_id) {
-      toast.error("Los jugadores deben ser diferentes");
-      return;
-    }
-    const validSets = matchSets.filter(s => s.p1 !== "" && s.p2 !== "");
-    if (validSets.length === 0) {
-      toast.error("Agregá al menos un set");
-      return;
-    }
-    const set_scores = validSets.map(s => ({ p1: parseInt(s.p1), p2: parseInt(s.p2) }));
-    const data = await adminAction("record_match", {
-      tournament_id: matchForm.tournament_id,
-      player1_id: matchForm.player1_id,
-      player2_id: matchForm.player2_id,
-      set_scores,
-      round: matchForm.round || null,
-      group_name: matchForm.group_name || null,
-    }, adminToken);
-    if (data.error) { toast.error(data.error); return; }
-    toast.success("Partido registrado. Ratings actualizados.");
-    setMatchForm({ tournament_id: matchForm.tournament_id, player1_id: "", player2_id: "", round: "", group_name: "" });
-    setMatchSets([{ p1: "", p2: "" }]);
-    fetchAll();
-  };
-
-  const recordChallengeResult = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!adminToken) return;
-    const validSets = challengeSets.filter(s => s.p1 !== "" && s.p2 !== "");
-    if (validSets.length === 0) {
-      toast.error("Agregá al menos un set");
-      return;
-    }
-    const set_scores = validSets.map(s => ({ p1: parseInt(s.p1), p2: parseInt(s.p2) }));
-    const data = await adminAction("record_challenge_result", {
-      challenge_id: challengeResultForm.challenge_id,
-      set_scores,
-    }, adminToken);
-    if (data.error) { toast.error(data.error); return; }
-    toast.success("Resultado de desafío registrado");
-    setChallengeResultForm({ challenge_id: "" });
-    setChallengeSets([{ p1: "", p2: "" }]);
+    toast.success(`Bracket generado: ${data.matches_created} partidos`);
     fetchAll();
   };
 
@@ -197,69 +136,60 @@ export default function AdminPanel() {
       placement: placementForm.placement,
     }, adminToken);
     if (data.error) { toast.error(data.error); return; }
-    toast.success(`Puntos aplicados: ${data.points > 0 ? "+" : ""}${data.points}`);
+    toast.success(`Puntos: ${data.points > 0 ? "+" : ""}${data.points}`);
     setPlacementForm({ player_id: "", placement: "" });
     fetchAll();
   };
 
   const registerPlayerToTournament = async (tournamentId: string, playerId: string) => {
     if (!adminToken) return;
-    const data = await adminAction("register_player_tournament", {
-      tournament_id: tournamentId,
-      player_id: playerId,
-    }, adminToken);
+    const data = await adminAction("register_player_tournament", { tournament_id: tournamentId, player_id: playerId }, adminToken);
     if (data.error) { toast.error(data.error); return; }
     toast.success("Jugador inscripto");
     fetchAll();
   };
 
-  const renderSetInputs = (sets: SetScore[], setSets: (s: SetScore[]) => void) => (
-    <div className="space-y-1.5">
-      <Label className="text-xs">Sets (puntaje por set)</Label>
-      {sets.map((set, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground w-6">S{i + 1}</span>
-          <Input
-            type="number"
-            placeholder="J1"
-            value={set.p1}
-            onChange={e => {
-              const n = [...sets];
-              n[i] = { ...n[i], p1: e.target.value };
-              setSets(n);
-            }}
-            className="w-20"
-            min="0"
-          />
-          <span className="text-xs text-muted-foreground">-</span>
-          <Input
-            type="number"
-            placeholder="J2"
-            value={set.p2}
-            onChange={e => {
-              const n = [...sets];
-              n[i] = { ...n[i], p2: e.target.value };
-              setSets(n);
-            }}
-            className="w-20"
-            min="0"
-          />
-          {sets.length > 1 && (
-            <button type="button" onClick={() => setSets(sets.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive text-xs">✕</button>
-          )}
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={() => setSets([...sets, { p1: "", p2: "" }])}
-        className="text-xs text-muted-foreground hover:text-foreground"
-      >
-        + Agregar set
-      </button>
-    </div>
-  );
+  const publishNews = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    setNewsLoading(true);
 
-  // If not admin, show login form
+    let image_url: string | null = null;
+    if (newsImage) {
+      const ext = newsImage.name.split(".").pop();
+      const path = `${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("news-images").upload(path, newsImage);
+      if (error) {
+        toast.error("Error subiendo imagen");
+        setNewsLoading(false);
+        return;
+      }
+      const { data: urlData } = supabase.storage.from("news-images").getPublicUrl(path);
+      image_url = urlData.publicUrl;
+    }
+
+    const data = await adminAction("create_news", {
+      title: newsForm.title,
+      content: newsForm.content,
+      image_url,
+    }, adminToken);
+
+    setNewsLoading(false);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Noticia publicada");
+    setNewsForm({ title: "", content: "" });
+    setNewsImage(null);
+    fetchAll();
+  };
+
+  const deleteNews = async (newsId: string) => {
+    if (!adminToken || !confirm("¿Eliminar esta noticia?")) return;
+    const data = await adminAction("delete_news", { news_id: newsId }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Noticia eliminada");
+    fetchAll();
+  };
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-background">
@@ -270,28 +200,14 @@ export default function AdminPanel() {
             <form onSubmit={handleAdminLogin} className="space-y-4">
               <div>
                 <Label htmlFor="admin-user">Usuario</Label>
-                <Input
-                  id="admin-user"
-                  value={adminForm.username}
-                  onChange={e => setAdminForm(p => ({ ...p, username: e.target.value }))}
-                  placeholder="Usuario admin"
-                  required
-                />
+                <Input id="admin-user" value={adminForm.username} onChange={e => setAdminForm(p => ({ ...p, username: e.target.value }))} placeholder="Usuario" required />
               </div>
               <div>
                 <Label htmlFor="admin-pass">Contraseña</Label>
-                <Input
-                  id="admin-pass"
-                  type="password"
-                  value={adminForm.password}
-                  onChange={e => setAdminForm(p => ({ ...p, password: e.target.value }))}
-                  placeholder="Contraseña admin"
-                  required
-                />
+                <Input id="admin-pass" type="password" value={adminForm.password} onChange={e => setAdminForm(p => ({ ...p, password: e.target.value }))} placeholder="Contraseña" required />
               </div>
               <Button type="submit" className="w-full" disabled={loginLoading}>
-                <LogIn className="w-4 h-4 mr-1" />
-                {loginLoading ? "Ingresando..." : "Ingresar como Admin"}
+                <LogIn className="w-4 h-4 mr-1" />{loginLoading ? "Ingresando..." : "Ingresar"}
               </Button>
             </form>
           </div>
@@ -300,277 +216,252 @@ export default function AdminPanel() {
     );
   }
 
-  const tournamentPlayers = matchForm.tournament_id
-    ? players.filter(p => (registrations[matchForm.tournament_id] || []).includes(p.id))
-    : [];
-
-  const selectedChallenge = challenges.find(c => c.id === challengeResultForm.challenge_id);
-  const getPlayerName = (pid: string) => players.find(p => p.id === pid)?.full_name || "?";
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-10">
-        <h1 className="font-heading text-2xl font-bold text-foreground mb-6">Panel de Admin</h1>
+        <h1 className="font-heading text-2xl font-bold text-foreground mb-4">Panel de Admin</h1>
 
-        <div className="grid lg:grid-cols-2 gap-4">
-          {/* Create Tournament */}
-          <div className="glass-card p-5">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Crear Torneo
-            </h2>
-            <form onSubmit={createTournament} className="space-y-2.5">
-              <div>
-                <Label className="text-xs">Nombre</Label>
-                <Input value={newTournament.name} onChange={e => setNewTournament(p => ({...p, name: e.target.value}))} required maxLength={100} />
-              </div>
-              <div>
-                <Label className="text-xs">Descripción (opcional)</Label>
-                <Input value={newTournament.description} onChange={e => setNewTournament(p => ({...p, description: e.target.value}))} maxLength={255} />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+        {/* Tabs */}
+        <div className="flex gap-1 mb-6 bg-muted/50 p-1 rounded-lg w-fit">
+          {[
+            { id: "tournaments" as const, label: "Torneos", icon: <Trophy className="w-4 h-4" /> },
+            { id: "news" as const, label: "Noticias", icon: <Newspaper className="w-4 h-4" /> },
+            { id: "players" as const, label: "Jugadores", icon: <Users className="w-4 h-4" /> },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === tab.id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.icon}{tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* TOURNAMENTS TAB */}
+        {activeTab === "tournaments" && (
+          <div className="grid lg:grid-cols-2 gap-4">
+            {/* Create Tournament */}
+            <div className="glass-card p-5">
+              <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Crear Torneo
+              </h2>
+              <form onSubmit={createTournament} className="space-y-2.5">
                 <div>
-                  <Label className="text-xs">Formato</Label>
-                  <Select value={newTournament.format} onValueChange={v => setNewTournament(p => ({...p, format: v}))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="single_elimination">Eliminación Directa</SelectItem>
-                      <SelectItem value="groups">Fase de Grupos</SelectItem>
-                      <SelectItem value="groups_then_elimination">Grupos + Eliminación</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs">Nombre</Label>
+                  <Input value={newTournament.name} onChange={e => setNewTournament(p => ({...p, name: e.target.value}))} required maxLength={100} />
                 </div>
                 <div>
-                  <Label className="text-xs">Tipo</Label>
-                  <Select value={newTournament.type} onValueChange={v => setNewTournament(p => ({...p, type: v}))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="singles">Individual</SelectItem>
-                      <SelectItem value="doubles">Dobles (2v2)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs">Descripción</Label>
+                  <Input value={newTournament.description} onChange={e => setNewTournament(p => ({...p, description: e.target.value}))} maxLength={255} />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">Máx. jugadores</Label>
-                  <Input type="number" value={newTournament.max_players} onChange={e => setNewTournament(p => ({...p, max_players: e.target.value}))} />
-                </div>
-                {(newTournament.format === "groups" || newTournament.format === "groups_then_elimination") && (
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs">Grupos</Label>
-                    <Input type="number" value={newTournament.groups_count} onChange={e => setNewTournament(p => ({...p, groups_count: e.target.value}))} min="2" />
+                    <Label className="text-xs">Formato</Label>
+                    <Select value={newTournament.format} onValueChange={v => setNewTournament(p => ({...p, format: v}))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single_elimination">Eliminación Directa</SelectItem>
+                        <SelectItem value="groups">Fase de Grupos</SelectItem>
+                        <SelectItem value="groups_then_elimination">Grupos + Eliminación</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
-              </div>
-              <Button type="submit" className="w-full">Crear Torneo</Button>
-            </form>
-          </div>
+                  <div>
+                    <Label className="text-xs">Tipo</Label>
+                    <Select value={newTournament.type} onValueChange={v => setNewTournament(p => ({...p, type: v}))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="singles">Individual</SelectItem>
+                        <SelectItem value="doubles">Dobles</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Máx. jugadores (opcional)</Label>
+                    <Input type="number" value={newTournament.max_players} onChange={e => setNewTournament(p => ({...p, max_players: e.target.value}))} placeholder="Sin límite" />
+                  </div>
+                  {(newTournament.format === "groups" || newTournament.format === "groups_then_elimination") && (
+                    <div>
+                      <Label className="text-xs">Grupos</Label>
+                      <Input type="number" value={newTournament.groups_count} onChange={e => setNewTournament(p => ({...p, groups_count: e.target.value}))} min="2" />
+                    </div>
+                  )}
+                </div>
+                <Button type="submit" className="w-full">Crear Torneo</Button>
+              </form>
+            </div>
 
-          {/* Record Match */}
-          <div className="glass-card p-5">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Registrar Partido</h2>
-            <form onSubmit={recordMatch} className="space-y-2.5">
-              <div>
-                <Label className="text-xs">Torneo</Label>
-                <Select value={matchForm.tournament_id} onValueChange={v => setMatchForm(p => ({...p, tournament_id: v, player1_id: "", player2_id: ""}))}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                  <SelectContent>
-                    {tournaments.filter(t => t.status !== "finished").map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Manage Tournaments */}
+            <div className="glass-card p-5">
+              <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Gestionar Torneos</h2>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {tournaments.map(t => {
+                  const regs = registrations[t.id] || [];
+                  return (
+                    <div key={t.id} className="p-3 rounded-lg bg-muted/30 flex items-center justify-between">
+                      <div>
+                        <span className="font-medium text-xs text-foreground">{t.name}</span>
+                        <span className="text-xs text-muted-foreground ml-1.5">
+                          {t.status === "registration" ? "Inscripción" : t.status === "in_progress" ? "En Curso" : "Fin"} · {regs.length} jugadores
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-0.5">
+                        {t.status === "registration" && regs.length >= 2 && (
+                          <button onClick={() => generateBracket(t.id)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground" title="Generar bracket e iniciar">
+                            <Zap className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {t.status === "in_progress" && (
+                          <button onClick={() => updateStatus(t.id, "finished")} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground" title="Finalizar">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button onClick={() => deleteTournament(t.id)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Eliminar">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+            </div>
+
+            {/* Placement Points */}
+            <div className="glass-card p-5">
+              <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+                <Award className="w-4 h-4" /> Puntos por Instancia
+              </h2>
+              <form onSubmit={addPlacement} className="space-y-2.5">
                 <div>
-                  <Label className="text-xs">Jugador 1</Label>
-                  <Select value={matchForm.player1_id} onValueChange={v => setMatchForm(p => ({...p, player1_id: v}))}>
+                  <Label className="text-xs">Jugador</Label>
+                  <Select value={placementForm.player_id} onValueChange={v => setPlacementForm(p => ({...p, player_id: v}))}>
                     <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                     <SelectContent>
-                      {tournamentPlayers.map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.full_name} ({p.rating})</SelectItem>
-                      ))}
+                      {players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name} ({p.rating})</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Jugador 2</Label>
-                  <Select value={matchForm.player2_id} onValueChange={v => setMatchForm(p => ({...p, player2_id: v}))}>
+                  <Label className="text-xs">Instancia</Label>
+                  <Select value={placementForm.placement} onValueChange={v => setPlacementForm(p => ({...p, placement: v}))}>
                     <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                     <SelectContent>
-                      {tournamentPlayers.filter(p => p.id !== matchForm.player1_id).map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.full_name} ({p.rating})</SelectItem>
-                      ))}
+                      <SelectItem value="campeon">Campeón (+30)</SelectItem>
+                      <SelectItem value="subcampeon">Sub-Campeón (+25)</SelectItem>
+                      <SelectItem value="tercero">Tercero (+21)</SelectItem>
+                      <SelectItem value="4to">4° (+17)</SelectItem>
+                      <SelectItem value="8vo">8° (+13)</SelectItem>
+                      <SelectItem value="16vo">16° (+10)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              {renderSetInputs(matchSets, setMatchSets)}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">Ronda</Label>
-                  <Input value={matchForm.round} onChange={e => setMatchForm(p => ({...p, round: e.target.value}))} placeholder="ej: Cuartos" />
-                </div>
-                <div>
-                  <Label className="text-xs">Grupo</Label>
-                  <Input value={matchForm.group_name} onChange={e => setMatchForm(p => ({...p, group_name: e.target.value}))} placeholder="ej: Grupo A" />
-                </div>
-              </div>
-              <Button type="submit" className="w-full" disabled={!matchForm.player1_id || !matchForm.player2_id}>
-                Registrar Partido
-              </Button>
-            </form>
-          </div>
-
-          {/* Challenge Results */}
-          <div className="glass-card p-5">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
-              <Swords className="w-4 h-4" /> Resultado de Desafío
-            </h2>
-            {challenges.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No hay desafíos aceptados pendientes de resultado.</p>
-            ) : (
-              <form onSubmit={recordChallengeResult} className="space-y-2.5">
-                <div>
-                  <Label className="text-xs">Desafío</Label>
-                  <Select value={challengeResultForm.challenge_id} onValueChange={v => setChallengeResultForm({ challenge_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Seleccionar desafío" /></SelectTrigger>
-                    <SelectContent>
-                      {challenges.map(c => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {getPlayerName(c.challenger_id)} vs {getPlayerName(c.challenged_id)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {selectedChallenge && (
-                  <p className="text-xs text-muted-foreground">
-                    J1: {getPlayerName(selectedChallenge.challenger_id)} — J2: {getPlayerName(selectedChallenge.challenged_id)}
-                  </p>
-                )}
-                {renderSetInputs(challengeSets, setChallengeSets)}
-                <Button type="submit" className="w-full" disabled={!challengeResultForm.challenge_id}>
-                  Registrar Resultado
+                <Button type="submit" className="w-full" variant="outline" disabled={!placementForm.player_id || !placementForm.placement}>
+                  Aplicar Puntos
                 </Button>
               </form>
-            )}
-          </div>
+            </div>
 
-          {/* Placement Points */}
-          <div className="glass-card p-5">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
-              <Award className="w-4 h-4" /> Puntos por Instancia
-            </h2>
-            <form onSubmit={addPlacement} className="space-y-2.5">
-              <div>
-                <Label className="text-xs">Jugador</Label>
-                <Select value={placementForm.player_id} onValueChange={v => setPlacementForm(p => ({...p, player_id: v}))}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                  <SelectContent>
-                    {players.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name} ({p.rating})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Instancia</Label>
-                <Select value={placementForm.placement} onValueChange={v => setPlacementForm(p => ({...p, placement: v}))}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="campeon">Campeón (+30)</SelectItem>
-                    <SelectItem value="subcampeon">Sub-Campeón (+25)</SelectItem>
-                    <SelectItem value="tercero">Tercero (+21)</SelectItem>
-                    <SelectItem value="4to">4° de final (+17)</SelectItem>
-                    <SelectItem value="8vo">8° de final (+13)</SelectItem>
-                    <SelectItem value="16vo">16° de final (+10)</SelectItem>
-                    <SelectItem value="32vo">32° de final (+8)</SelectItem>
-                    <SelectItem value="64vo">64° de final (+6)</SelectItem>
-                    <SelectItem value="128vo">128° de final (+4)</SelectItem>
-                    <SelectItem value="grupo_perdido">Perdido en grupo (-2)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full" variant="outline" disabled={!placementForm.player_id || !placementForm.placement}>
-                Aplicar Puntos
-              </Button>
-            </form>
-          </div>
-
-          {/* Manage Tournaments */}
-          <div className="glass-card p-5">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Gestionar Torneos</h2>
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {tournaments.map(t => {
-                const regs = registrations[t.id] || [];
-                return (
-                  <div key={t.id} className="p-3 rounded-md bg-muted/30 flex items-center justify-between">
-                    <div>
-                      <span className="font-medium text-xs text-foreground">{t.name}</span>
-                      <span className="text-xs text-muted-foreground ml-1.5">
-                        {t.status === "registration" ? "Inscripción" : t.status === "in_progress" ? "En Curso" : "Fin"} · {regs.length} jugadores
-                      </span>
+            {/* Register Players */}
+            <div className="glass-card p-5">
+              <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Inscribir Jugadores</h2>
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {tournaments.filter(t => t.status === "registration").map(t => {
+                  const regs = registrations[t.id] || [];
+                  const unregistered = players.filter(p => !regs.includes(p.id));
+                  return (
+                    <div key={t.id} className="p-3 rounded-lg bg-muted/20">
+                      <h3 className="font-medium text-xs text-foreground mb-1">{t.name}</h3>
+                      <p className="text-xs text-muted-foreground mb-2">{regs.length} inscriptos</p>
+                      {unregistered.length > 0 ? (
+                        <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                          {unregistered.map(p => (
+                            <button key={p.id} onClick={() => registerPlayerToTournament(t.id, p.id)} className="w-full text-left px-2 py-1 text-xs rounded hover:bg-muted transition-colors">
+                              + {p.full_name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Todos inscriptos.</p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-0.5">
-                      {t.status === "registration" && t.format === "single_elimination" && regs.length >= 2 && (
-                        <button onClick={() => generateBracket(t.id)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Generar bracket">
-                          <Zap className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {t.status === "registration" && (
-                        <button onClick={() => updateStatus(t.id, "in_progress")} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Iniciar">
-                          <Play className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {t.status === "in_progress" && (
-                        <button onClick={() => updateStatus(t.id, "finished")} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Finalizar">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button onClick={() => deleteTournament(t.id)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Eliminar">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Register players */}
-          <div className="glass-card p-5">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Inscribir Jugadores</h2>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {tournaments.filter(t => t.status === "registration").map(t => {
-                const regs = registrations[t.id] || [];
-                const unregistered = players.filter(p => !regs.includes(p.id));
-                return (
-                  <div key={t.id} className="p-3 rounded-md bg-muted/20">
-                    <h3 className="font-medium text-xs text-foreground mb-1">{t.name}</h3>
-                    <p className="text-xs text-muted-foreground mb-2">{regs.length} inscriptos</p>
-                    {unregistered.length > 0 ? (
-                      <div className="space-y-0.5 max-h-32 overflow-y-auto">
-                        {unregistered.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => registerPlayerToTournament(t.id, p.id)}
-                            className="w-full text-left px-2 py-1 text-xs rounded hover:bg-muted transition-colors"
-                          >
-                            + {p.full_name}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Todos inscriptos.</p>
+        {/* NEWS TAB */}
+        {activeTab === "news" && (
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="glass-card p-5">
+              <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+                <Plus className="w-4 h-4" /> Publicar Noticia
+              </h2>
+              <form onSubmit={publishNews} className="space-y-3">
+                <div>
+                  <Label className="text-xs">Título</Label>
+                  <Input value={newsForm.title} onChange={e => setNewsForm(p => ({ ...p, title: e.target.value }))} required maxLength={200} placeholder="Título de la noticia" />
+                </div>
+                <div>
+                  <Label className="text-xs">Contenido</Label>
+                  <Textarea value={newsForm.content} onChange={e => setNewsForm(p => ({ ...p, content: e.target.value }))} required placeholder="Escribí el contenido de la noticia..." rows={5} />
+                </div>
+                <div>
+                  <Label className="text-xs flex items-center gap-1"><Image className="w-3 h-3" /> Imagen (opcional)</Label>
+                  <Input type="file" accept="image/*" onChange={e => setNewsImage(e.target.files?.[0] || null)} className="text-xs" />
+                </div>
+                <Button type="submit" className="w-full" disabled={newsLoading}>
+                  {newsLoading ? "Publicando..." : "Publicar Noticia"}
+                </Button>
+              </form>
+            </div>
+
+            <div className="glass-card p-5">
+              <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Noticias Publicadas</h2>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {news.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No hay noticias.</p>
+                ) : news.map(n => (
+                  <div key={n.id} className="p-3 rounded-lg bg-muted/30 flex items-start gap-3">
+                    {n.image_url && (
+                      <img src={n.image_url} alt="" className="w-16 h-12 rounded object-cover flex-shrink-0" />
                     )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-xs font-medium text-foreground truncate">{n.title}</h3>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{n.content}</p>
+                      <span className="text-xs text-muted-foreground/60">{new Date(n.created_at).toLocaleDateString("es-AR")}</span>
+                    </div>
+                    <button onClick={() => deleteNews(n.id)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex-shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* PLAYERS TAB */}
+        {activeTab === "players" && (
+          <div className="glass-card p-5">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Jugadores Registrados ({players.length})</h2>
+            <div className="space-y-1 max-h-96 overflow-y-auto">
+              {players.map((p, i) => (
+                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/30 text-sm">
+                  <span className="text-foreground font-medium">{p.full_name}</span>
+                  <span className="text-muted-foreground font-heading font-semibold">{p.rating}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
