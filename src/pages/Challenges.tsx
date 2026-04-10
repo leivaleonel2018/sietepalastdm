@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { authAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Swords, Check, X } from "lucide-react";
+import { Swords, Check, X, Trophy } from "lucide-react";
 
 interface Player {
   id: string;
@@ -29,12 +30,17 @@ interface Challenge {
   created_at: string;
 }
 
+interface SetScore { p1: string; p2: string }
+
 export default function Challenges() {
   const { player, playerToken } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [selectedOpponent, setSelectedOpponent] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Result recording form
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [sets, setSets] = useState<SetScore[]>([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
 
   useEffect(() => {
     fetchAll();
@@ -52,19 +58,6 @@ export default function Challenges() {
 
   const getPlayerName = (pid: string) => players.find(p => p.id === pid)?.full_name || "?";
 
-  const createChallenge = async () => {
-    if (!player || !selectedOpponent) return;
-    const result = await authAction("create_challenge", {
-      challenger_id: player.id,
-      challenged_id: selectedOpponent,
-      player_token: playerToken,
-    });
-    if (result.error) { toast.error(result.error); return; }
-    toast.success("Desafío enviado");
-    setSelectedOpponent("");
-    fetchAll();
-  };
-
   const respondChallenge = async (challengeId: string, accept: boolean) => {
     if (!player) return;
     const result = await authAction("respond_challenge", {
@@ -78,8 +71,39 @@ export default function Challenges() {
     fetchAll();
   };
 
-  const myChallenges = player ? challenges.filter(c => c.challenger_id === player.id || c.challenged_id === player.id) : [];
+  const submitResult = async (challengeId: string) => {
+    if (!player) return;
+    const validSets = sets.filter(s => s.p1 !== "" && s.p2 !== "");
+    if (validSets.length < 2) {
+      toast.error("Registrá al menos 2 sets");
+      return;
+    }
+    const set_scores = validSets.map(s => ({ p1: parseInt(s.p1), p2: parseInt(s.p2) }));
+    
+    // Check best of 3: someone must have 2 wins
+    let p1Wins = 0, p2Wins = 0;
+    set_scores.forEach(s => { if (s.p1 > s.p2) p1Wins++; else p2Wins++; });
+    if (p1Wins < 2 && p2Wins < 2) {
+      toast.error("Alguien debe ganar al menos 2 sets (mejor de 3)");
+      return;
+    }
+
+    const result = await authAction("record_challenge_result", {
+      challenge_id: challengeId,
+      set_scores,
+      player_id: player.id,
+      player_token: playerToken,
+    });
+    if (result.error) { toast.error(result.error); return; }
+    toast.success("Resultado registrado. Ratings actualizados.");
+    setRecordingId(null);
+    setSets([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
+    fetchAll();
+  };
+
   const pendingForMe = player ? challenges.filter(c => c.challenged_id === player.id && c.status === "pending") : [];
+  const acceptedMine = player ? challenges.filter(c => (c.challenger_id === player.id || c.challenged_id === player.id) && c.status === "accepted") : [];
+  const pendingSent = player ? challenges.filter(c => c.challenger_id === player.id && c.status === "pending") : [];
   const allCompleted = challenges.filter(c => c.status === "completed");
 
   if (loading) {
@@ -87,47 +111,31 @@ export default function Challenges() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background ping-pong-pattern">
       <Navbar />
       <div className="container mx-auto px-4 py-10 max-w-3xl">
-        <h1 className="font-heading text-2xl font-bold text-foreground mb-6 flex items-center gap-2">
-          <Swords className="w-5 h-5" /> Desafíos
+        <h1 className="font-heading text-2xl font-bold text-foreground mb-2 flex items-center gap-2 animate-slide-up">
+          <Swords className="w-6 h-6 text-primary" /> Desafíos
         </h1>
-
-        {/* Create Challenge */}
-        {player && (
-          <div className="glass-card p-5 mb-6">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Enviar Desafío</h2>
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <Label className="text-xs">Oponente</Label>
-                <Select value={selectedOpponent} onValueChange={setSelectedOpponent}>
-                  <SelectTrigger><SelectValue placeholder="Elegí un jugador" /></SelectTrigger>
-                  <SelectContent>
-                    {players.filter(p => p.id !== player.id).map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name} ({p.rating})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={createChallenge} disabled={!selectedOpponent}>Desafiar</Button>
-            </div>
-          </div>
-        )}
+        <p className="text-muted-foreground text-sm mb-6 animate-slide-up stagger-1">
+          Desafiá a cualquier jugador desde su perfil. Se juegan al mejor de 3 sets.
+        </p>
 
         {/* Pending for me */}
         {pendingForMe.length > 0 && (
-          <div className="glass-card p-5 mb-6">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Desafíos Recibidos</h2>
+          <div className="glass-card p-5 mb-4 animate-slide-up stagger-1 border-l-4 border-l-primary">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">⚡ Desafíos Recibidos</h2>
             <div className="space-y-2">
               {pendingForMe.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30">
-                  <span className="text-sm text-foreground">{getPlayerName(c.challenger_id)} te desafió</span>
+                <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <span className="text-sm text-foreground">
+                    <Link to={`/jugador/${c.challenger_id}`} className="font-medium hover:underline">{getPlayerName(c.challenger_id)}</Link> te desafió
+                  </span>
                   <div className="flex gap-1">
-                    <button onClick={() => respondChallenge(c.id, true)} className="p-1.5 rounded bg-muted hover:bg-muted/80 text-foreground" title="Aceptar">
+                    <button onClick={() => respondChallenge(c.id, true)} className="p-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary" title="Aceptar">
                       <Check className="w-4 h-4" />
                     </button>
-                    <button onClick={() => respondChallenge(c.id, false)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Rechazar">
+                    <button onClick={() => respondChallenge(c.id, false)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Rechazar">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -137,28 +145,96 @@ export default function Challenges() {
           </div>
         )}
 
-        {/* My active challenges */}
-        {player && myChallenges.filter(c => c.status !== "completed" && c.status !== "rejected").length > 0 && (
-          <div className="glass-card p-5 mb-6">
-            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Mis Desafíos Activos</h2>
+        {/* Accepted - record result */}
+        {acceptedMine.length > 0 && (
+          <div className="glass-card p-5 mb-4 animate-slide-up stagger-2 border-l-4 border-l-accent">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">🏓 Partidos por jugar</h2>
+            <div className="space-y-3">
+              {acceptedMine.map(c => {
+                const isRecording = recordingId === c.id;
+                const isChallenger = c.challenger_id === player?.id;
+                return (
+                  <div key={c.id} className="p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-foreground">
+                        <Link to={`/jugador/${c.challenger_id}`} className="font-medium hover:underline">{getPlayerName(c.challenger_id)}</Link>
+                        {" vs "}
+                        <Link to={`/jugador/${c.challenged_id}`} className="font-medium hover:underline">{getPlayerName(c.challenged_id)}</Link>
+                      </span>
+                      {!isRecording && (
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setRecordingId(c.id);
+                          setSets([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
+                        }}>
+                          Registrar resultado
+                        </Button>
+                      )}
+                    </div>
+
+                    {isRecording && (
+                      <div className="mt-3 space-y-2 p-3 rounded-lg bg-card border border-border">
+                        <p className="text-xs text-muted-foreground">
+                          J1: {getPlayerName(c.challenger_id)} — J2: {getPlayerName(c.challenged_id)} · Mejor de 3
+                        </p>
+                        {sets.map((set, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-8">Set {i + 1}</span>
+                            <Input
+                              type="number" placeholder="J1" value={set.p1} min="0"
+                              onChange={e => { const n = [...sets]; n[i] = { ...n[i], p1: e.target.value }; setSets(n); }}
+                              className="w-20 h-8 text-sm"
+                            />
+                            <span className="text-muted-foreground">-</span>
+                            <Input
+                              type="number" placeholder="J2" value={set.p2} min="0"
+                              onChange={e => { const n = [...sets]; n[i] = { ...n[i], p2: e.target.value }; setSets(n); }}
+                              className="w-20 h-8 text-sm"
+                            />
+                            {sets.length > 2 && (
+                              <button type="button" onClick={() => setSets(sets.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive text-xs">✕</button>
+                            )}
+                          </div>
+                        ))}
+                        {sets.length < 3 && (
+                          <button type="button" onClick={() => setSets([...sets, { p1: "", p2: "" }])} className="text-xs text-primary hover:underline">
+                            + Set 3
+                          </button>
+                        )}
+                        <div className="flex gap-2 mt-2">
+                          <Button size="sm" onClick={() => submitResult(c.id)}>Confirmar</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setRecordingId(null)}>Cancelar</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Pending sent */}
+        {pendingSent.length > 0 && (
+          <div className="glass-card p-5 mb-4 animate-slide-up stagger-2">
+            <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Desafíos Enviados</h2>
             <div className="space-y-2">
-              {myChallenges.filter(c => c.status !== "completed" && c.status !== "rejected").map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30 text-sm">
+              {pendingSent.map(c => (
+                <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 text-sm">
                   <span className="text-foreground">
-                    {getPlayerName(c.challenger_id)} vs {getPlayerName(c.challenged_id)}
+                    Desafiaste a <Link to={`/jugador/${c.challenged_id}`} className="font-medium hover:underline">{getPlayerName(c.challenged_id)}</Link>
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    {c.status === "pending" ? "Pendiente" : "Aceptado"}
-                  </span>
+                  <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted">Pendiente</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Completed challenges */}
-        <div className="glass-card p-5">
-          <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Desafíos Completados</h2>
+        {/* Completed */}
+        <div className="glass-card p-5 animate-slide-up stagger-3">
+          <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-primary" /> Desafíos Completados
+          </h2>
           {allCompleted.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin desafíos completados aún.</p>
           ) : (
@@ -167,15 +243,15 @@ export default function Challenges() {
                 const setScores = c.set_scores as Array<{p1: number; p2: number}> | null;
                 const setDetail = setScores ? setScores.map(s => `${s.p1}-${s.p2}`).join(", ") : "";
                 return (
-                  <div key={c.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30 text-sm">
+                  <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 text-sm">
                     <div>
-                      <span className={c.winner_id === c.challenger_id ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                      <Link to={`/jugador/${c.challenger_id}`} className={`hover:underline ${c.winner_id === c.challenger_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                         {getPlayerName(c.challenger_id)}
-                      </span>
+                      </Link>
                       <span className="text-muted-foreground mx-2">vs</span>
-                      <span className={c.winner_id === c.challenged_id ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                      <Link to={`/jugador/${c.challenged_id}`} className={`hover:underline ${c.winner_id === c.challenged_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                         {getPlayerName(c.challenged_id)}
-                      </span>
+                      </Link>
                     </div>
                     <div className="text-right">
                       <span className="font-heading font-bold text-foreground">
