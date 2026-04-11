@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Trophy, Users, Star, ArrowRight, Swords, BookOpen, Newspaper } from "lucide-react";
+import { Trophy, Users, Star, ArrowRight, Swords, BookOpen, Newspaper, Crown, Medal, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import Navbar from "@/components/Navbar";
 
 interface NewsItem {
@@ -12,21 +13,68 @@ interface NewsItem {
   created_at: string;
 }
 
+interface Player {
+  id: string;
+  full_name: string;
+  rating: number;
+  avatar_url: string | null;
+}
+
+interface RecentMatch {
+  id: string;
+  player1_id: string | null;
+  player2_id: string | null;
+  player1_score: number | null;
+  player2_score: number | null;
+  winner_id: string | null;
+  set_scores: any;
+  created_at: string;
+  round: string | null;
+}
+
 export default function Index() {
+  const { player } = useAuth();
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [topPlayers, setTopPlayers] = useState<Player[]>([]);
+  const [recentMatches, setRecentMatches] = useState<RecentMatch[]>([]);
+  const [playersMap, setPlayersMap] = useState<Record<string, Player>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase
-      .from("news")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(6)
-      .then(({ data }) => {
-        setNews((data || []) as NewsItem[]);
-        setLoading(false);
+    const fetchAll = async () => {
+      const [newsRes, topRes, matchesRes] = await Promise.all([
+        supabase.from("news").select("*").order("created_at", { ascending: false }).limit(6),
+        supabase.from("players").select("id, full_name, rating, avatar_url").order("rating", { ascending: false }).limit(5),
+        supabase.from("matches").select("*").order("created_at", { ascending: false }).limit(5),
+      ]);
+
+      setNews((newsRes.data || []) as NewsItem[]);
+      setTopPlayers((topRes.data || []) as Player[]);
+      setRecentMatches((matchesRes.data || []) as RecentMatch[]);
+
+      // Build players map for matches
+      const playerIds = new Set<string>();
+      (matchesRes.data || []).forEach((m: any) => {
+        if (m.player1_id) playerIds.add(m.player1_id);
+        if (m.player2_id) playerIds.add(m.player2_id);
       });
+      if (playerIds.size > 0) {
+        const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(playerIds));
+        const map: Record<string, Player> = {};
+        (pData || []).forEach((p: any) => { map[p.id] = p; });
+        setPlayersMap(map);
+      }
+      setLoading(false);
+    };
+    fetchAll();
   }, []);
+
+  const getRankIcon = (i: number) => {
+    if (i === 0) return <Crown className="w-4 h-4 text-yellow-500" />;
+    if (i === 1) return <Medal className="w-4 h-4 text-gray-400" />;
+    if (i === 2) return <Medal className="w-4 h-4 text-amber-600" />;
+    return null;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -34,7 +82,6 @@ export default function Index() {
 
       {/* Hero */}
       <section className="hero-gradient border-b border-border/10 relative overflow-hidden">
-        {/* Decorative elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-primary/5 animate-float" />
           <div className="absolute bottom-10 left-10 w-32 h-32 rounded-full bg-accent/5 animate-float stagger-2" />
@@ -55,12 +102,21 @@ export default function Index() {
               Registrate, competí y subí en el ranking.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link
-                to="/registro"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-heading font-semibold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 animate-pulse-glow"
-              >
-                Registrarme <ArrowRight className="w-4 h-4" />
-              </Link>
+              {player ? (
+                <Link
+                  to={`/jugador/${player.id}`}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-heading font-semibold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 animate-pulse-glow"
+                >
+                  Mi Perfil <ArrowRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <Link
+                  to="/registro"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-heading font-semibold text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 animate-pulse-glow"
+                >
+                  Registrarme <ArrowRight className="w-4 h-4" />
+                </Link>
+              )}
               <Link
                 to="/torneos"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-primary-foreground/80 font-heading font-semibold text-sm hover:text-primary-foreground transition-all border border-primary-foreground/20 hover:border-primary-foreground/40"
@@ -91,15 +147,100 @@ export default function Index() {
           ))}
         </div>
 
+        {/* Top 5 Ranking */}
+        <div className="grid lg:grid-cols-3 gap-6 mb-14">
+          <div className="lg:col-span-1 animate-slide-up stagger-1">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-primary" /> Ranking
+              </h2>
+              <Link to="/rankings" className="text-xs text-primary hover:underline">Ver completo →</Link>
+            </div>
+            <div className="glass-card overflow-hidden">
+              {topPlayers.length === 0 ? (
+                <p className="p-6 text-sm text-muted-foreground text-center">Sin jugadores aún</p>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {topPlayers.map((p, i) => (
+                    <Link key={p.id} to={`/jugador/${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                      <div className="flex items-center gap-1 w-8 text-sm font-medium text-muted-foreground">
+                        {getRankIcon(i)}
+                        {i + 1}°
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary overflow-hidden flex-shrink-0">
+                        {p.avatar_url ? (
+                          <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          p.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
+                        )}
+                      </div>
+                      <span className="text-sm font-medium text-foreground flex-1 truncate">{p.full_name}</span>
+                      <span className="text-sm font-heading font-bold text-primary">{p.rating}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Matches */}
+          <div className="lg:col-span-2 animate-slide-up stagger-2">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" /> Últimos Partidos
+              </h2>
+            </div>
+            <div className="glass-card overflow-hidden">
+              {recentMatches.length === 0 ? (
+                <p className="p-6 text-sm text-muted-foreground text-center">Los resultados de los partidos aparecerán acá</p>
+              ) : (
+                <div className="divide-y divide-border/50">
+                  {recentMatches.map(m => {
+                    const p1 = playersMap[m.player1_id || ""];
+                    const p2 = playersMap[m.player2_id || ""];
+                    const setScores = m.set_scores as Array<{p1: number; p2: number}> | null;
+                    const setDetail = setScores ? setScores.map(s => `${s.p1}-${s.p2}`).join(", ") : "";
+
+                    return (
+                      <div key={m.id} className="px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span className={`text-sm truncate ${m.winner_id === m.player1_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                            {p1?.full_name || "TBD"}
+                          </span>
+                          <span className="font-heading font-bold text-foreground text-sm px-2">
+                            {m.player1_score ?? 0} - {m.player2_score ?? 0}
+                          </span>
+                          <span className={`text-sm truncate ${m.winner_id === m.player2_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                            {p2?.full_name || "TBD"}
+                          </span>
+                        </div>
+                        <div className="text-right flex-shrink-0 ml-3">
+                          {setDetail && <span className="text-xs text-muted-foreground block">({setDetail})</span>}
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(m.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* News Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-heading text-2xl font-bold text-foreground flex items-center gap-2">
               <Newspaper className="w-6 h-6 text-primary" /> Noticias
             </h2>
-            <Link to="/reglas" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors">
-              <BookOpen className="w-4 h-4" /> Reglas y Puntos
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link to="/noticias" className="text-sm text-primary hover:underline">Ver todas →</Link>
+              <Link to="/reglas" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors">
+                <BookOpen className="w-4 h-4" /> Reglas
+              </Link>
+            </div>
           </div>
 
           {loading ? (
@@ -124,18 +265,15 @@ export default function Index() {
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {news.map((item, i) => (
-                <article
+                <Link
                   key={item.id}
-                  className="glass-card overflow-hidden animate-slide-up hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group"
+                  to={`/noticia/${item.id}`}
+                  className="glass-card overflow-hidden animate-slide-up hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group block"
                   style={{ animationDelay: `${i * 0.1}s` }}
                 >
                   {item.image_url ? (
                     <div className="h-48 overflow-hidden">
-                      <img
-                        src={item.image_url}
-                        alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
+                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     </div>
                   ) : (
                     <div className="h-48 bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
@@ -149,7 +287,7 @@ export default function Index() {
                     <h3 className="font-heading font-semibold text-foreground mb-2 line-clamp-2">{item.title}</h3>
                     <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{item.content}</p>
                   </div>
-                </article>
+                </Link>
               ))}
             </div>
           )}
