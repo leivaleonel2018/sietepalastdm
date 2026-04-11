@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import GlobalChat from "@/components/GlobalChat";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -14,6 +15,8 @@ import PlayerProfile from "./pages/PlayerProfile";
 import AdminPanel from "./pages/AdminPanel";
 import Challenges from "./pages/Challenges";
 import Rules from "./pages/Rules";
+import NewsDetail from "./pages/NewsDetail";
+import AllNews from "./pages/AllNews";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,8 +39,11 @@ const App = () => (
             <Route path="/admin" element={<AdminPanel />} />
             <Route path="/desafios" element={<Challenges />} />
             <Route path="/reglas" element={<Rules />} />
+            <Route path="/noticia/:id" element={<NewsDetail />} />
+            <Route path="/noticias" element={<AllNews />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <GlobalChat />
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>
