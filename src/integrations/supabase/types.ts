@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      badges: {
+        Row: {
+          created_at: string
+          description: string | null
+          icon_url: string | null
+          id: string
+          name: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          icon_url?: string | null
+          id?: string
+          name: string
+          type?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          icon_url?: string | null
+          id?: string
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
       challenges: {
         Row: {
           challenged_id: string
@@ -161,6 +188,27 @@ export type Database = {
           },
         ]
       }
+      messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          player_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          player_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          player_id?: string
+        }
+        Relationships: []
+      }
       news: {
         Row: {
           content: string
@@ -185,8 +233,33 @@ export type Database = {
         }
         Relationships: []
       }
+      player_badges: {
+        Row: {
+          badge_id: string
+          created_at: string
+          id: string
+          player_id: string
+          tournament_id: string | null
+        }
+        Insert: {
+          badge_id: string
+          created_at?: string
+          id?: string
+          player_id: string
+          tournament_id?: string | null
+        }
+        Update: {
+          badge_id?: string
+          created_at?: string
+          id?: string
+          player_id?: string
+          tournament_id?: string | null
+        }
+        Relationships: []
+      }
       players: {
         Row: {
+          avatar_url: string | null
           created_at: string
           dni: string
           full_name: string
@@ -195,6 +268,7 @@ export type Database = {
           rating: number
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           dni: string
           full_name: string
@@ -203,6 +277,7 @@ export type Database = {
           rating?: number
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           dni?: string
           full_name?: string
@@ -250,6 +325,7 @@ export type Database = {
       }
       tournaments: {
         Row: {
+          badge_id: string | null
           created_at: string
           description: string | null
           format: string
@@ -261,6 +337,7 @@ export type Database = {
           type: string
         }
         Insert: {
+          badge_id?: string | null
           created_at?: string
           description?: string | null
           format?: string
@@ -272,6 +349,7 @@ export type Database = {
           type?: string
         }
         Update: {
+          badge_id?: string | null
           created_at?: string
           description?: string | null
           format?: string
