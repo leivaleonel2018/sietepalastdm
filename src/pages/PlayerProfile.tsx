@@ -4,10 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { authAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
-import { ArrowLeft, TrendingUp, TrendingDown, Trophy, Lock, Swords } from "lucide-react";
+import PlayerAvatar from "@/components/PlayerAvatar";
+import { ArrowLeft, TrendingUp, TrendingDown, Trophy, Lock, Swords, Camera, Award } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 
 interface Player {
@@ -16,6 +18,7 @@ interface Player {
   dni: string;
   rating: number;
   created_at: string;
+  avatar_url: string | null;
 }
 
 interface Match {
@@ -34,11 +37,7 @@ interface Match {
   created_at: string;
 }
 
-interface TournamentInfo {
-  id: string;
-  name: string;
-  status: string;
-}
+interface TournamentInfo { id: string; name: string; status: string; }
 
 interface Challenge {
   id: string;
@@ -54,6 +53,23 @@ interface Challenge {
   created_at: string;
 }
 
+interface BadgeInfo {
+  id: string;
+  badge_id: string;
+  tournament_id: string | null;
+  created_at: string;
+  badges: { name: string; description: string | null; icon_url: string | null; type: string } | null;
+}
+
+// All possible badges for locked display
+interface Badge {
+  id: string;
+  name: string;
+  description: string | null;
+  icon_url: string | null;
+  type: string;
+}
+
 export default function PlayerProfile() {
   const { id } = useParams<{ id: string }>();
   const { player: loggedPlayer, playerToken } = useAuth();
@@ -64,11 +80,14 @@ export default function PlayerProfile() {
   const [tournamentsMap, setTournamentsMap] = useState<Record<string, TournamentInfo>>({});
   const [tournamentIds, setTournamentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [earnedBadges, setEarnedBadges] = useState<BadgeInfo[]>([]);
+  const [allBadges, setAllBadges] = useState<Badge[]>([]);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [pwForm, setPwForm] = useState({ current: "", newPw: "", confirm: "" });
   const [pwLoading, setPwLoading] = useState(false);
   const [challengeLoading, setChallengeLoading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const isOwnProfile = loggedPlayer?.id === id;
   const canChallenge = loggedPlayer && !isOwnProfile;
@@ -76,16 +95,20 @@ export default function PlayerProfile() {
   useEffect(() => {
     if (!id) return;
     const fetchAll = async () => {
-      const [pRes, m1Res, m2Res, regsRes, cRes] = await Promise.all([
+      const [pRes, m1Res, m2Res, regsRes, cRes, pbRes, bRes] = await Promise.all([
         supabase.from("players").select("*").eq("id", id).single(),
         supabase.from("matches").select("*").eq("player1_id", id).order("created_at", { ascending: false }),
         supabase.from("matches").select("*").eq("player2_id", id).order("created_at", { ascending: false }),
         supabase.from("tournament_registrations").select("tournament_id").eq("player_id", id),
         supabase.from("challenges").select("*").or(`challenger_id.eq.${id},challenged_id.eq.${id}`).order("created_at", { ascending: false }),
+        supabase.from("player_badges").select("*, badges(name, description, icon_url, type)").eq("player_id", id).order("created_at", { ascending: false }),
+        supabase.from("badges").select("*").order("created_at"),
       ]);
 
       setPlayer(pRes.data as Player | null);
       setChallenges((cRes.data || []) as Challenge[]);
+      setEarnedBadges((pbRes.data || []) as unknown as BadgeInfo[]);
+      setAllBadges((bRes.data || []) as Badge[]);
 
       const allMatches = [...(m1Res.data || []), ...(m2Res.data || [])];
       allMatches.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -135,66 +158,58 @@ export default function PlayerProfile() {
       player_token: playerToken,
     });
     setChallengeLoading(false);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success("¡Desafío enviado!");
-    }
+    if (result.error) toast.error(result.error);
+    else toast.success("¡Desafío enviado!");
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id) return;
+    setAvatarUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `${id}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (upErr) { toast.error("Error subiendo imagen"); setAvatarUploading(false); return; }
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    // Update via auth action
+    const result = await authAction("update_avatar", {
+      player_id: id,
+      avatar_url: urlData.publicUrl + "?t=" + Date.now(),
+      player_token: playerToken,
+    });
+    setAvatarUploading(false);
+    if (result.error) { toast.error(result.error); return; }
+    toast.success("Foto actualizada");
+    setPlayer(prev => prev ? { ...prev, avatar_url: urlData.publicUrl + "?t=" + Date.now() } : prev);
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pwForm.newPw !== pwForm.confirm) {
-      toast.error("Las contraseñas no coinciden");
-      return;
-    }
-    if (pwForm.newPw.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
-      return;
-    }
+    if (pwForm.newPw !== pwForm.confirm) { toast.error("Las contraseñas no coinciden"); return; }
+    if (pwForm.newPw.length < 6) { toast.error("Mínimo 6 caracteres"); return; }
     setPwLoading(true);
-    const result = await authAction("change_password", {
-      player_id: id,
-      current_password: pwForm.current,
-      new_password: pwForm.newPw,
-    });
+    const result = await authAction("change_password", { player_id: id, current_password: pwForm.current, new_password: pwForm.newPw });
     setPwLoading(false);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success("Contraseña actualizada");
-      setPwForm({ current: "", newPw: "", confirm: "" });
-      setShowPasswordForm(false);
-    }
+    if (result.error) toast.error(result.error);
+    else { toast.success("Contraseña actualizada"); setPwForm({ current: "", newPw: "", confirm: "" }); setShowPasswordForm(false); }
   };
 
-  if (loading) {
-    return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Cargando...</div></div>;
-  }
-  if (!player) {
-    return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Jugador no encontrado.</div></div>;
-  }
+  if (loading) return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Cargando...</div></div>;
+  if (!player) return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Jugador no encontrado.</div></div>;
 
   const wins = matches.filter(m => m.winner_id === id).length;
   const losses = matches.length - wins;
   const winRate = matches.length > 0 ? Math.round((wins / matches.length) * 100) : 0;
 
   let currentStreak = 0;
-  for (const m of matches) {
-    if (m.winner_id === id) currentStreak++;
-    else break;
-  }
+  for (const m of matches) { if (m.winner_id === id) currentStreak++; else break; }
 
   const matchesByTournament: Record<string, Match[]> = {};
-  matches.forEach(m => {
-    if (!matchesByTournament[m.tournament_id]) matchesByTournament[m.tournament_id] = [];
-    matchesByTournament[m.tournament_id].push(m);
-  });
-  tournamentIds.forEach(tId => {
-    if (!matchesByTournament[tId]) matchesByTournament[tId] = [];
-  });
+  matches.forEach(m => { if (!matchesByTournament[m.tournament_id]) matchesByTournament[m.tournament_id] = []; matchesByTournament[m.tournament_id].push(m); });
+  tournamentIds.forEach(tId => { if (!matchesByTournament[tId]) matchesByTournament[tId] = []; });
 
   const completedChallenges = challenges.filter(c => c.status === "completed");
+  const earnedBadgeIds = new Set(earnedBadges.map(b => b.badge_id));
 
   return (
     <div className="min-h-screen bg-background ping-pong-pattern">
@@ -206,33 +221,38 @@ export default function PlayerProfile() {
 
         {/* Player Header */}
         <div className="glass-card p-6 mb-6 animate-slide-up">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h1 className="font-heading text-2xl font-bold text-foreground mb-1">{player.full_name}</h1>
-              <p className="text-sm text-muted-foreground">
-                Miembro desde {new Date(player.created_at).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {canChallenge && (
-                <Button
-                  onClick={handleChallenge}
-                  disabled={challengeLoading}
-                  size="sm"
-                  className="gap-1.5 shadow-sm"
-                >
-                  <Swords className="w-4 h-4" />
-                  {challengeLoading ? "Enviando..." : "Desafiar"}
-                </Button>
-              )}
+          <div className="flex items-start gap-4 mb-4">
+            <div className="relative group">
+              <PlayerAvatar name={player.full_name} avatarUrl={player.avatar_url} size="lg" />
               {isOwnProfile && (
-                <button
-                  onClick={() => setShowPasswordForm(!showPasswordForm)}
-                  className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Lock className="w-3 h-3" /> Cambiar clave
-                </button>
+                <label className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
+                  <Camera className="w-5 h-5 text-white" />
+                  <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" disabled={avatarUploading} />
+                </label>
               )}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="font-heading text-2xl font-bold text-foreground mb-1">{player.full_name}</h1>
+                  <p className="text-sm text-muted-foreground">
+                    Miembro desde {new Date(player.created_at).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {canChallenge && (
+                    <Button onClick={handleChallenge} disabled={challengeLoading} size="sm" className="gap-1.5 shadow-sm">
+                      <Swords className="w-4 h-4" />
+                      {challengeLoading ? "Enviando..." : "Desafiar"}
+                    </Button>
+                  )}
+                  {isOwnProfile && (
+                    <button onClick={() => setShowPasswordForm(!showPasswordForm)} className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
+                      <Lock className="w-3 h-3" /> Cambiar clave
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -249,35 +269,76 @@ export default function PlayerProfile() {
               </div>
             ))}
           </div>
-          {currentStreak > 1 && (
-            <p className="text-sm text-muted-foreground mt-3">🔥 Racha actual: {currentStreak} victorias</p>
-          )}
+          {currentStreak > 1 && <p className="text-sm text-muted-foreground mt-3">🔥 Racha actual: {currentStreak} victorias</p>}
 
           {showPasswordForm && isOwnProfile && (
             <form onSubmit={handlePasswordChange} className="mt-4 p-4 rounded-lg bg-muted/30 space-y-2.5">
-              <div>
-                <Label className="text-xs">Contraseña actual</Label>
-                <Input type="password" value={pwForm.current} onChange={e => setPwForm(p => ({ ...p, current: e.target.value }))} required />
-              </div>
-              <div>
-                <Label className="text-xs">Nueva contraseña</Label>
-                <Input type="password" value={pwForm.newPw} onChange={e => setPwForm(p => ({ ...p, newPw: e.target.value }))} required minLength={6} />
-              </div>
-              <div>
-                <Label className="text-xs">Confirmar nueva contraseña</Label>
-                <Input type="password" value={pwForm.confirm} onChange={e => setPwForm(p => ({ ...p, confirm: e.target.value }))} required />
-              </div>
-              <Button type="submit" size="sm" disabled={pwLoading}>
-                {pwLoading ? "Guardando..." : "Guardar"}
-              </Button>
+              <div><Label className="text-xs">Contraseña actual</Label><Input type="password" value={pwForm.current} onChange={e => setPwForm(p => ({ ...p, current: e.target.value }))} required /></div>
+              <div><Label className="text-xs">Nueva contraseña</Label><Input type="password" value={pwForm.newPw} onChange={e => setPwForm(p => ({ ...p, newPw: e.target.value }))} required minLength={6} /></div>
+              <div><Label className="text-xs">Confirmar</Label><Input type="password" value={pwForm.confirm} onChange={e => setPwForm(p => ({ ...p, confirm: e.target.value }))} required /></div>
+              <Button type="submit" size="sm" disabled={pwLoading}>{pwLoading ? "Guardando..." : "Guardar"}</Button>
             </form>
           )}
+        </div>
+
+        {/* Badges */}
+        <div className="glass-card p-5 mb-6 animate-slide-up stagger-1">
+          <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Award className="w-4 h-4 text-primary" /> Insignias
+          </h2>
+          <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+            {allBadges.filter(b => b.type !== "tournament").map(badge => {
+              const earned = earnedBadges.find(eb => eb.badge_id === badge.id);
+              const isEarned = !!earned;
+              return (
+                <Tooltip key={badge.id}>
+                  <TooltipTrigger asChild>
+                    <div className={`aspect-square rounded-xl flex flex-col items-center justify-center text-center p-2 transition-all ${
+                      isEarned
+                        ? "bg-primary/10 border-2 border-primary/30 cursor-default"
+                        : "bg-muted/50 border border-border opacity-40 grayscale cursor-help"
+                    }`}>
+                      <span className="text-2xl mb-0.5">
+                        {badge.icon_url && badge.icon_url.length <= 4 ? badge.icon_url : "🏅"}
+                      </span>
+                      <span className="text-[9px] font-medium text-foreground leading-tight">{badge.name}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-semibold">{badge.name}</p>
+                    <p className="text-xs text-muted-foreground">{badge.description}</p>
+                    {isEarned && earned && <p className="text-xs text-primary mt-1">Obtenida el {new Date(earned.created_at).toLocaleDateString("es-AR")}</p>}
+                    {!isEarned && <p className="text-xs text-muted-foreground mt-1">🔒 No obtenida</p>}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+            {/* Tournament champion badges */}
+            {earnedBadges
+              .filter(eb => eb.badges?.type === "tournament")
+              .map(eb => (
+                <Tooltip key={eb.id}>
+                  <TooltipTrigger asChild>
+                    <div className="aspect-square rounded-xl flex flex-col items-center justify-center text-center p-2 bg-accent/10 border-2 border-accent/40 ring-2 ring-accent/20 cursor-default">
+                      <span className="text-2xl mb-0.5">👑</span>
+                      <span className="text-[9px] font-medium text-foreground leading-tight">Campeón</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-semibold">🏆 Campeón de torneo</p>
+                    <p className="text-xs text-muted-foreground">{eb.badges?.description || "Ganó un torneo"}</p>
+                    <p className="text-xs text-primary mt-1">{new Date(eb.created_at).toLocaleDateString("es-AR")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))
+            }
+          </div>
         </div>
 
         {/* Challenge History */}
         {completedChallenges.length > 0 && (
           <>
-            <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2 animate-slide-up stagger-1">
+            <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2 animate-slide-up stagger-2">
               <Swords className="w-4 h-4 text-primary" /> Desafíos ({completedChallenges.length})
             </h2>
             <div className="space-y-1.5 mb-6">
@@ -288,13 +349,10 @@ export default function PlayerProfile() {
                 const ratingChange = isChallenger ? c.rating_change_challenger : c.rating_change_challenged;
                 const myScore = isChallenger ? c.challenger_sets_won : c.challenged_sets_won;
                 const oppScore = isChallenger ? c.challenged_sets_won : c.challenger_sets_won;
-
                 return (
                   <div key={c.id} className="glass-card px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${won ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                        {won ? "V" : "D"}
-                      </span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${won ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{won ? "V" : "D"}</span>
                       <div>
                         <span className="text-sm font-medium text-foreground">vs {opponent || "?"}</span>
                         <span className="text-xs text-muted-foreground ml-2">{myScore} - {oppScore}</span>
@@ -314,7 +372,7 @@ export default function PlayerProfile() {
         )}
 
         {/* Tournament History */}
-        <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2 animate-slide-up stagger-2">
+        <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2 animate-slide-up stagger-3">
           <Trophy className="w-4 h-4 text-primary" /> Torneos ({Object.keys(matchesByTournament).length})
         </h2>
         {Object.keys(matchesByTournament).length === 0 ? (
@@ -333,9 +391,7 @@ export default function PlayerProfile() {
                       {tInfo?.status === "finished" ? "Finalizado" : tInfo?.status === "in_progress" ? "En Curso" : "Inscripción"}
                     </span>
                   </div>
-                  {tMatches.length > 0 && (
-                    <span className="text-xs text-muted-foreground">{tWins}V - {tLosses}D</span>
-                  )}
+                  {tMatches.length > 0 && <span className="text-xs text-muted-foreground">{tWins}V - {tLosses}D</span>}
                 </Link>
               );
             })}
@@ -343,7 +399,7 @@ export default function PlayerProfile() {
         )}
 
         {/* Match History */}
-        <h2 className="font-heading font-semibold text-foreground mb-3 animate-slide-up stagger-3">Historial de Partidos</h2>
+        <h2 className="font-heading font-semibold text-foreground mb-3 animate-slide-up stagger-4">Historial de Partidos</h2>
         {matches.length === 0 ? (
           <div className="glass-card p-8 text-center text-muted-foreground text-sm">Sin partidos registrados.</div>
         ) : (
@@ -361,9 +417,7 @@ export default function PlayerProfile() {
               return (
                 <div key={m.id} className="glass-card px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${won ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                      {won ? "V" : "D"}
-                    </span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${won ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{won ? "V" : "D"}</span>
                     <div>
                       <span className="text-sm font-medium text-foreground">vs {opponent || "TBD"}</span>
                       <span className="text-xs text-muted-foreground ml-2">{myScore} - {oppScore}</span>
