@@ -30,7 +30,10 @@ interface RecentMatch {
   set_scores: any;
   created_at: string;
   round: string | null;
+  tournament_id: string;
 }
+
+const stripHtml = (str: string) => str.replace(/<[^>]*>/g, "").trim();
 
 export default function Index() {
   const { player } = useAuth();
@@ -38,33 +41,53 @@ export default function Index() {
   const [topPlayers, setTopPlayers] = useState<Player[]>([]);
   const [recentMatches, setRecentMatches] = useState<RecentMatch[]>([]);
   const [playersMap, setPlayersMap] = useState<Record<string, Player>>({});
-  const [loading, setLoading] = useState(true);
+  const [loadingNews, setLoadingNews] = useState(true);
+  const [loadingRanking, setLoadingRanking] = useState(true);
+  const [loadingMatches, setLoadingMatches] = useState(true);
+  const [totalPlayers, setTotalPlayers] = useState<number | null>(null);
+  const [totalMatches, setTotalMatches] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchAll = async () => {
-      const [newsRes, topRes, matchesRes] = await Promise.all([
-        supabase.from("news").select("*").order("created_at", { ascending: false }).limit(6),
-        supabase.from("players").select("id, full_name, rating, avatar_url").order("rating", { ascending: false }).limit(5),
-        supabase.from("matches").select("*").order("created_at", { ascending: false }).limit(5),
-      ]);
+      try {
+        const [newsRes, topRes, matchesRes, playersCountRes, matchesCountRes] = await Promise.all([
+          supabase.from("news").select("*").order("created_at", { ascending: false }).limit(6),
+          supabase.from("players").select("id, full_name, rating, avatar_url").order("rating", { ascending: false }).limit(5),
+          supabase.from("matches").select("*").order("created_at", { ascending: false }).limit(5),
+          supabase.from("players").select("*", { count: "exact", head: true }),
+          supabase.from("matches").select("*", { count: "exact", head: true }),
+        ]);
 
-      setNews((newsRes.data || []) as NewsItem[]);
-      setTopPlayers((topRes.data || []) as Player[]);
-      setRecentMatches((matchesRes.data || []) as RecentMatch[]);
+        setNews((newsRes.data || []) as NewsItem[]);
+        setLoadingNews(false);
 
-      // Build players map for matches
-      const playerIds = new Set<string>();
-      (matchesRes.data || []).forEach((m: any) => {
-        if (m.player1_id) playerIds.add(m.player1_id);
-        if (m.player2_id) playerIds.add(m.player2_id);
-      });
-      if (playerIds.size > 0) {
-        const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(playerIds));
-        const map: Record<string, Player> = {};
-        (pData || []).forEach((p: any) => { map[p.id] = p; });
-        setPlayersMap(map);
+        setTopPlayers((topRes.data || []) as Player[]);
+        setLoadingRanking(false);
+
+        setRecentMatches((matchesRes.data || []) as RecentMatch[]);
+        setTotalPlayers(playersCountRes.count ?? null);
+        setTotalMatches(matchesCountRes.count ?? null);
+
+        // Build players map for matches
+        const playerIds = new Set<string>();
+        (matchesRes.data || []).forEach((m: any) => {
+          if (m.player1_id) playerIds.add(m.player1_id);
+          if (m.player2_id) playerIds.add(m.player2_id);
+        });
+        if (playerIds.size > 0) {
+          const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(playerIds));
+          const map: Record<string, Player> = {};
+          (pData || []).forEach((p: any) => { map[p.id] = p; });
+          setPlayersMap(map);
+        }
+        setLoadingMatches(false);
+      } catch (err) {
+        console.error("Error fetching index data:", err);
+      } finally {
+        setLoadingNews(false);
+        setLoadingRanking(false);
+        setLoadingMatches(false);
       }
-      setLoading(false);
     };
     fetchAll();
   }, []);
@@ -124,6 +147,19 @@ export default function Index() {
                 Ver Torneos
               </Link>
             </div>
+
+            {/* Hero counters */}
+            <div className="flex gap-6 mt-8">
+              <div className="flex flex-col">
+                <span className="font-heading text-2xl font-bold text-primary-foreground">{totalPlayers ?? "–"}</span>
+                <span className="text-xs text-primary-foreground/50">Jugadores activos</span>
+              </div>
+              <div className="w-px bg-primary-foreground/20" />
+              <div className="flex flex-col">
+                <span className="font-heading text-2xl font-bold text-primary-foreground">{totalMatches ?? "–"}</span>
+                <span className="text-xs text-primary-foreground/50">Partidos jugados</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -157,7 +193,18 @@ export default function Index() {
               <Link to="/rankings" className="text-xs text-primary hover:underline">Ver completo →</Link>
             </div>
             <div className="glass-card overflow-hidden">
-              {topPlayers.length === 0 ? (
+              {loadingRanking ? (
+                <div className="divide-y divide-border/50">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                      <div className="w-8 h-4 bg-muted rounded" />
+                      <div className="w-8 h-8 rounded-full bg-muted flex-shrink-0" />
+                      <div className="flex-1 h-4 bg-muted rounded w-3/4" />
+                      <div className="w-10 h-4 bg-muted rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : topPlayers.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">Sin jugadores aún</p>
               ) : (
                 <div className="divide-y divide-border/50">
@@ -191,7 +238,20 @@ export default function Index() {
               </h2>
             </div>
             <div className="glass-card overflow-hidden">
-              {recentMatches.length === 0 ? (
+              {loadingMatches ? (
+                <div className="divide-y divide-border/50">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="flex items-center justify-between px-4 py-3 animate-pulse">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="h-4 bg-muted rounded w-24" />
+                        <div className="h-4 bg-muted rounded w-12" />
+                        <div className="h-4 bg-muted rounded w-24" />
+                      </div>
+                      <div className="h-3 bg-muted rounded w-16" />
+                    </div>
+                  ))}
+                </div>
+              ) : recentMatches.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">Los resultados de los partidos aparecerán acá</p>
               ) : (
                 <div className="divide-y divide-border/50">
@@ -202,25 +262,30 @@ export default function Index() {
                     const setDetail = setScores ? setScores.map(s => `${s.p1}-${s.p2}`).join(", ") : "";
 
                     return (
-                      <div key={m.id} className="px-4 py-3 flex items-center justify-between">
+                      <Link key={m.id} to={`/torneo/${m.tournament_id}`} className="px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors block">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
                           <span className={`text-sm truncate ${m.winner_id === m.player1_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                             {p1?.full_name || "TBD"}
                           </span>
                           <span className="font-heading font-bold text-foreground text-sm px-2">
-                            {m.player1_score ?? 0} - {m.player2_score ?? 0}
+                            {m.player1_score !== null ? m.player1_score : "–"} - {m.player2_score !== null ? m.player2_score : "–"}
                           </span>
                           <span className={`text-sm truncate ${m.winner_id === m.player2_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                             {p2?.full_name || "TBD"}
                           </span>
                         </div>
-                        <div className="text-right flex-shrink-0 ml-3">
-                          {setDetail && <span className="text-xs text-muted-foreground block">({setDetail})</span>}
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(m.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
-                          </span>
+                        <div className="text-right flex-shrink-0 ml-3 flex items-center gap-2">
+                          {m.round && (
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">{m.round}</span>
+                          )}
+                          <div>
+                            {setDetail && <span className="text-xs text-muted-foreground block">({setDetail})</span>}
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(m.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      </Link>
                     );
                   })}
                 </div>
@@ -243,7 +308,7 @@ export default function Index() {
             </div>
           </div>
 
-          {loading ? (
+          {loadingNews ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[1, 2, 3].map(i => (
                 <div key={i} className="glass-card overflow-hidden animate-pulse">
@@ -273,7 +338,7 @@ export default function Index() {
                 >
                   {item.image_url ? (
                     <div className="h-48 overflow-hidden">
-                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <img src={item.image_url} alt={item.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     </div>
                   ) : (
                     <div className="h-48 bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center">
@@ -285,7 +350,7 @@ export default function Index() {
                       {new Date(item.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}
                     </time>
                     <h3 className="font-heading font-semibold text-foreground mb-2 line-clamp-2">{item.title}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{item.content}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{stripHtml(item.content)}</p>
                   </div>
                 </Link>
               ))}
