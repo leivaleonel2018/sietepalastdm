@@ -98,7 +98,7 @@ export default function Index() {
               TDM<br />Siete Palmas 🏓
             </h1>
             <p className="text-primary-foreground/60 text-lg mb-8 leading-relaxed max-w-lg">
-              Torneos recreativos de tenis de mesa en Ciudad de Formosa.
+              Torneos recreativos de tenis de mesa en Siete Palmas.
               Registrate, competí y subí en el ranking.
             </p>
             <div className="flex flex-wrap gap-3">
