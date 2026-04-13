@@ -255,7 +255,15 @@ export type Database = {
           player_id?: string
           tournament_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "player_badges_badge_id_fkey"
+            columns: ["badge_id"]
+            isOneToOne: false
+            referencedRelation: "badges"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       players: {
         Row: {
