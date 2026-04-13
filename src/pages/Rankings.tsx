@@ -8,7 +8,18 @@ interface Player {
   id: string;
   full_name: string;
   rating: number;
+  avatar_url: string | null;
 }
+
+const PlayerAvatar = ({ player, size = "w-8 h-8" }: { player: Player; size?: string }) => (
+  <div className={`${size} rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary overflow-hidden flex-shrink-0`}>
+    {player.avatar_url ? (
+      <img src={player.avatar_url} alt="" className="w-full h-full object-cover" />
+    ) : (
+      player.full_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
+    )}
+  </div>
+);
 
 export default function Rankings() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -17,7 +28,7 @@ export default function Rankings() {
   useEffect(() => {
     supabase
       .from("players")
-      .select("id, full_name, rating")
+      .select("id, full_name, rating, avatar_url")
       .order("rating", { ascending: false })
       .then(({ data }) => {
         setPlayers(data || []);
@@ -65,6 +76,9 @@ export default function Rankings() {
               return (
                 <Link key={p.id} to={`/jugador/${p.id}`} className={`glass-card p-4 text-center hover:shadow-md transition-all ${isFirst ? "ring-2 ring-primary/30 -mt-2" : ""}`}>
                   <div className="text-3xl mb-1">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}</div>
+                  <div className="flex justify-center mb-2">
+                    <PlayerAvatar player={p} size="w-12 h-12" />
+                  </div>
                   <h3 className="font-heading font-semibold text-sm text-foreground truncate">{p.full_name}</h3>
                   <p className="font-heading font-bold text-xl text-primary">{p.rating}</p>
                 </Link>
@@ -97,7 +111,8 @@ export default function Rankings() {
                       </div>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Link to={`/jugador/${player.id}`} className="font-medium text-foreground hover:text-primary hover:underline transition-colors">
+                      <Link to={`/jugador/${player.id}`} className="font-medium text-foreground hover:text-primary hover:underline transition-colors flex items-center gap-2.5">
+                        <PlayerAvatar player={player} size="w-7 h-7" />
                         {player.full_name}
                       </Link>
                     </td>

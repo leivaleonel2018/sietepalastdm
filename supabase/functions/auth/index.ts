@@ -179,7 +179,16 @@ Deno.serve(async (req) => {
       if (player_token !== player_id) return respond({ error: "No autorizado" });
       const { data: challenge, error: cErr } = await supabase.from("challenges").select("*").eq("id", challenge_id).eq("status", "accepted").single();
       if (cErr || !challenge) return respond({ error: "Desafío no encontrado o no aceptado" });
-      if (challenge.challenger_id !== player_id && challenge.challenged_id !== player_id) return respond({ error: "No sos parte de este desafío" });
+
+      // Allow participants OR designated registrars to record results
+      const isParticipant = challenge.challenger_id === player_id || challenge.challenged_id === player_id;
+      let isRegistrar = false;
+      if (!isParticipant) {
+        const { data: pData } = await supabase.from("players").select("full_name").eq("id", player_id).single();
+        const registrarNames = ["hernán ariel duarte", "leonel samuel leiva", "gonzalez octavio"];
+        isRegistrar = pData ? registrarNames.includes(pData.full_name.toLowerCase()) : false;
+      }
+      if (!isParticipant && !isRegistrar) return respond({ error: "No tenés permiso para registrar este resultado" });
 
       let cSetsWon = 0, dSetsWon = 0;
       if (set_scores && Array.isArray(set_scores)) {

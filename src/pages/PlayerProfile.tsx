@@ -197,9 +197,17 @@ export default function PlayerProfile() {
   if (loading) return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Cargando...</div></div>;
   if (!player) return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Jugador no encontrado.</div></div>;
 
-  const wins = matches.filter(m => m.winner_id === id).length;
-  const losses = matches.length - wins;
-  const winRate = matches.length > 0 ? Math.round((wins / matches.length) * 100) : 0;
+  const completedChallenges = challenges.filter(c => c.status === "completed");
+  const earnedBadgeIds = new Set(earnedBadges.map(b => b.badge_id));
+
+  const matchWins = matches.filter(m => m.winner_id === id).length;
+  const matchLosses = matches.length - matchWins;
+  const challengeWins = completedChallenges.filter(c => c.winner_id === id).length;
+  const challengeLosses = completedChallenges.length - challengeWins;
+  const wins = matchWins + challengeWins;
+  const losses = matchLosses + challengeLosses;
+  const totalGames = wins + losses;
+  const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
 
   let currentStreak = 0;
   for (const m of matches) { if (m.winner_id === id) currentStreak++; else break; }
@@ -207,9 +215,6 @@ export default function PlayerProfile() {
   const matchesByTournament: Record<string, Match[]> = {};
   matches.forEach(m => { if (!matchesByTournament[m.tournament_id]) matchesByTournament[m.tournament_id] = []; matchesByTournament[m.tournament_id].push(m); });
   tournamentIds.forEach(tId => { if (!matchesByTournament[tId]) matchesByTournament[tId] = []; });
-
-  const completedChallenges = challenges.filter(c => c.status === "completed");
-  const earnedBadgeIds = new Set(earnedBadges.map(b => b.badge_id));
 
   return (
     <div className="min-h-screen bg-background ping-pong-pattern">
