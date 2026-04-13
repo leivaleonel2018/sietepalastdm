@@ -197,6 +197,9 @@ export default function PlayerProfile() {
   if (loading) return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Cargando...</div></div>;
   if (!player) return <div className="min-h-screen bg-background"><Navbar /><div className="container mx-auto px-4 py-16 text-center text-muted-foreground">Jugador no encontrado.</div></div>;
 
+  const completedChallenges = challenges.filter(c => c.status === "completed");
+  const earnedBadgeIds = new Set(earnedBadges.map(b => b.badge_id));
+
   const matchWins = matches.filter(m => m.winner_id === id).length;
   const matchLosses = matches.length - matchWins;
   const challengeWins = completedChallenges.filter(c => c.winner_id === id).length;
@@ -212,9 +215,6 @@ export default function PlayerProfile() {
   const matchesByTournament: Record<string, Match[]> = {};
   matches.forEach(m => { if (!matchesByTournament[m.tournament_id]) matchesByTournament[m.tournament_id] = []; matchesByTournament[m.tournament_id].push(m); });
   tournamentIds.forEach(tId => { if (!matchesByTournament[tId]) matchesByTournament[tId] = []; });
-
-  const completedChallenges = challenges.filter(c => c.status === "completed");
-  const earnedBadgeIds = new Set(earnedBadges.map(b => b.badge_id));
 
   return (
     <div className="min-h-screen bg-background ping-pong-pattern">
