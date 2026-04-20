@@ -304,8 +304,8 @@ export default function Index() {
   ];
 
   // Ticker items from recent matches
-  const tickerItems = recentMatches
-    .filter(m => m.winner_id && m.player1_id && m.player2_id)
+  const tickerItems = Object.keys(playersMap).length === 0 ? [] : recentMatches
+    .filter(m => m.winner_id && m.player1_id && m.player2_id && playersMap[m.player1_id] && playersMap[m.player2_id])
     .slice(0, 5)
     .map(m => {
       const winner = playersMap[m.winner_id!];
@@ -314,7 +314,7 @@ export default function Index() {
       const score = `${m.player1_score ?? 0}-${m.player2_score ?? 0}`;
       let ago = "";
       try { ago = formatDistanceToNow(new Date(m.created_at), { addSuffix: true, locale: es }); } catch { ago = ""; }
-      return `${winner?.full_name ?? "?"} venció a ${loser?.full_name ?? "?"} ${score}${ago ? " · " + ago : ""}`;
+      return `${winner.full_name.split(" ")[0]} venció a ${loser.full_name.split(" ")[0]} ${score}${ago ? " · " + ago : ""}`;
     });
 
   const PlayerAvatar = ({ p, size = "w-8 h-8" }: { p: Player | undefined; size?: string }) => {
@@ -482,15 +482,16 @@ export default function Index() {
                 {/* Podium – Top 3 */}
                 {topPlayers.length >= 3 && (
                   <div className="grid grid-cols-3 gap-2 mb-3 items-end">
-                    {[1, 0, 2].map(idx => {
-                      const p = topPlayers[idx];
+                    {[2, 1, 3].map((rank) => {
+                      const p = topPlayers[rank - 1];
+                      if (!p) return null;
                       const streak = playerStreaks[p.id] || 0;
-                      const isFirst = idx === 0;
+                      const isFirst = rank === 1;
                       return (
                         <Link
                           key={p.id}
                           to={`/jugador/${p.id}`}
-                          className={`glass-card flex flex-col items-center px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "py-6 border-yellow-500/30 bg-yellow-500/5 shadow-md z-10" : idx === 1 ? "py-4" : "py-3"}`}
+                          className={`glass-card flex flex-col items-center px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "py-6 border-yellow-500/30 bg-yellow-500/5 shadow-md z-10" : rank === 2 ? "py-4" : "py-3"}`}
                         >
                           {isFirst && <Crown className="w-5 h-5 text-yellow-500 mb-1" />}
                           <PlayerAvatar p={p} size={isFirst ? "w-16 h-16" : "w-12 h-12"} />
@@ -501,7 +502,7 @@ export default function Index() {
                               <Flame className="w-3 h-3" /> Racha
                             </span>
                           )}
-                          <span className="text-[10px] text-muted-foreground mt-0.5">{idx + 1}°</span>
+                          <span className="text-[10px] text-muted-foreground mt-0.5">{rank}°</span>
                         </Link>
                       );
                     })}

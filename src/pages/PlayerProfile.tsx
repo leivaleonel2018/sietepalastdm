@@ -111,11 +111,11 @@ export default function PlayerProfile() {
       ]);
 
       setPlayer(pRes.data as Player | null);
-      setChallenges((cRes.data || []) as Challenge[]);
+      setChallenges((cRes.data || []) as unknown as Challenge[]);
       setEarnedBadges((pbRes.data || []) as unknown as BadgeInfo[]);
       setAllBadges((bRes.data || []) as Badge[]);
 
-      const allMatches = [...(m1Res.data || []), ...(m2Res.data || [])];
+      const allMatches = [...(m1Res.data || []), ...(m2Res.data || [])] as unknown as Match[];
       allMatches.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setMatches(allMatches);
 
@@ -243,6 +243,12 @@ export default function PlayerProfile() {
     if (iconStr === "⚔️") return <Swords className="w-8 h-8 text-red-400 drop-shadow-[0_0_10px_rgba(248,113,113,0.6)]" />;
     if (iconStr === "🧠") return <Star className="w-8 h-8 text-violet-400 drop-shadow-[0_0_10px_rgba(167,139,250,0.6)]" />;
     if (iconStr === "💎") return <Crown className="w-8 h-8 text-sky-300 drop-shadow-[0_0_12px_rgba(125,211,252,0.7)]" />;
+    if (iconStr === "🏔️") return <Trophy className="w-8 h-8 text-slate-300 drop-shadow-[0_0_10px_rgba(148,163,184,0.6)]" />;
+    if (iconStr === "🌌") return <Star className="w-8 h-8 text-indigo-400 drop-shadow-[0_0_12px_rgba(129,140,248,0.7)]" />;
+    if (iconStr === "🏰") return <Crown className="w-8 h-8 text-amber-500 drop-shadow-[0_0_12px_rgba(245,158,11,0.7)]" />;
+    if (iconStr === "☄️") return <Flame className="w-8 h-8 text-rose-400 drop-shadow-[0_0_12px_rgba(251,113,133,0.7)]" />;
+    if (iconStr === "🏟️") return <Award className="w-8 h-8 text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.6)]" />;
+    if (iconStr === "🌋") return <Flame className="w-8 h-8 text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.7)]" />;
     // Fallback: render as emoji text
     return <span className="text-3xl drop-shadow-md">{iconStr || "🎖️"}</span>;
   };
