@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { authAction } from "@/lib/api";
+import { authAction, adminAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Swords, Check, X, Trophy, Calendar, TrendingUp, TrendingDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { Plus } from "lucide-react";
 
 interface Player {
   id: string;
@@ -23,7 +24,7 @@ interface Challenge {
   challenger_id: string;
   challenged_id: string;
   status: string;
-  set_scores: any;
+  set_scores: unknown;
   challenger_sets_won: number | null;
   challenged_sets_won: number | null;
   winner_id: string | null;
@@ -55,7 +56,7 @@ const PlayerAvatar = ({ player, size = "w-8 h-8" }: { player: Player | undefined
 );
 
 export default function Challenges() {
-  const { player, playerToken } = useAuth();
+  const { player, playerToken, isAdmin, adminToken } = useAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [playersMap, setPlayersMap] = useState<Record<string, Player>>({});
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -99,6 +100,7 @@ export default function Challenges() {
   const getPlayerName = (pid: string) => playersMap[pid]?.full_name || "?";
 
   const canRecordResult = (c: Challenge): boolean => {
+    if (isAdmin) return true;
     if (!player) return false;
     // Participant can record
     if (c.challenger_id === player.id || c.challenged_id === player.id) return true;
@@ -121,7 +123,6 @@ export default function Challenges() {
   };
 
   const submitResult = async (challengeId: string) => {
-    if (!player) return;
     const validSets = sets.filter(s => s.p1 !== "" && s.p2 !== "");
     if (validSets.length < 2) {
       toast.error("Registrá al menos 2 sets");
@@ -136,12 +137,17 @@ export default function Challenges() {
       return;
     }
 
-    const result = await authAction("record_challenge_result", {
-      challenge_id: challengeId,
-      set_scores,
-      player_id: player.id,
-      player_token: playerToken,
-    });
+    let result;
+    if (isAdmin && adminToken) {
+      result = await adminAction("admin_record_challenge_result", { challenge_id: challengeId, set_scores }, adminToken);
+    } else if (player) {
+      result = await authAction("record_challenge_result", {
+        challenge_id: challengeId, set_scores,
+        player_id: player.id, player_token: playerToken,
+      });
+    } else {
+      toast.error("No autorizado"); return;
+    }
     if (result.error) { toast.error(result.error); return; }
     toast.success("Resultado registrado. Ratings actualizados.");
     setRecordingId(null);
@@ -150,7 +156,9 @@ export default function Challenges() {
   };
 
   const pendingForMe = player ? challenges.filter(c => c.challenged_id === player.id && c.status === "pending") : [];
-  const acceptedMine = player
+  const acceptedMine = isAdmin
+    ? challenges.filter(c => c.status === "accepted")
+    : player
     ? challenges.filter(c =>
         c.status === "accepted" &&
         (c.challenger_id === player.id || c.challenged_id === player.id || registrarIds.has(player.id))
@@ -233,37 +241,74 @@ export default function Challenges() {
                     </div>
 
                     {isRecording && (
-                      <div className="mt-3 space-y-2 p-3 rounded-lg bg-card border border-border">
-                        <p className="text-xs text-muted-foreground">
-                          J1: {getPlayerName(c.challenger_id)} — J2: {getPlayerName(c.challenged_id)} · Mejor de 3
-                        </p>
-                        {sets.map((set, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground w-8">Set {i + 1}</span>
-                            <Input
-                              type="number" placeholder="J1" value={set.p1} min="0"
-                              onChange={e => { const n = [...sets]; n[i] = { ...n[i], p1: e.target.value }; setSets(n); }}
-                              className="w-20 h-8 text-sm"
-                            />
-                            <span className="text-muted-foreground">-</span>
-                            <Input
-                              type="number" placeholder="J2" value={set.p2} min="0"
-                              onChange={e => { const n = [...sets]; n[i] = { ...n[i], p2: e.target.value }; setSets(n); }}
-                              className="w-20 h-8 text-sm"
-                            />
-                            {sets.length > 2 && (
-                              <button type="button" onClick={() => setSets(sets.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive text-xs">✕</button>
-                            )}
+                      <div className="mt-4 p-5 rounded-xl bg-gradient-to-br from-card to-background border border-border/50 shadow-inner overflow-hidden relative">
+                        {/* Table Tennis Details Background */}
+                        <div className="absolute right-0 top-0 opacity-5 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
+                          <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path><path d="M2 12h20"></path></svg>
+                        </div>
+                        
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/30">
+                          <h3 className="font-heading font-bold text-sm flex items-center gap-2">
+                            <Trophy className="w-4 h-4 text-primary" /> Mesa de Anotación
+                          </h3>
+                          <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-sm">Mejor de 3 Sets</span>
+                        </div>
+                        
+                        <div className="space-y-4 relative z-10">
+                          {sets.map((set, i) => (
+                            <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-black/20 border border-white/5 relative">
+                              <div className="flex-shrink-0 w-full sm:w-16">
+                                <span className="text-xs font-bold uppercase tracking-wider text-primary/80">Set {i + 1}</span>
+                              </div>
+                              
+                              <div className="flex-1 flex items-center justify-between sm:justify-center gap-4">
+                                <div className="flex items-center gap-2 flex-1 sm:flex-none justify-end">
+                                  <span className="text-xs sm:text-sm font-medium text-foreground/80 truncate max-w-[80px] sm:max-w-[120px] text-right" title={getPlayerName(c.challenger_id)}>
+                                    {getPlayerName(c.challenger_id).split(' ')[0]}
+                                  </span>
+                                  <Input
+                                    type="number" value={set.p1} min="0" max="99"
+                                    onChange={e => { const n = [...sets]; n[i] = { ...n[i], p1: e.target.value }; setSets(n); }}
+                                    className="w-14 h-12 text-center text-xl font-heading font-bold bg-background/50 border-primary/20 focus-visible:ring-primary text-primary shadow-inner"
+                                  />
+                                </div>
+                                
+                                <span className="text-muted-foreground/30 font-bold text-lg">:</span>
+                                
+                                <div className="flex items-center gap-2 flex-1 sm:flex-none justify-start">
+                                  <Input
+                                    type="number" value={set.p2} min="0" max="99"
+                                    onChange={e => { const n = [...sets]; n[i] = { ...n[i], p2: e.target.value }; setSets(n); }}
+                                    className="w-14 h-12 text-center text-xl font-heading font-bold bg-background/50 border-accent/20 focus-visible:ring-accent text-accent shadow-inner"
+                                  />
+                                  <span className="text-xs sm:text-sm font-medium text-foreground/80 truncate max-w-[80px] sm:max-w-[120px] text-left" title={getPlayerName(c.challenged_id)}>
+                                    {getPlayerName(c.challenged_id).split(' ')[0]}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {sets.length > 2 && (
+                                <button type="button" onClick={() => setSets(sets.filter((_, j) => j !== i))} className="absolute sm:relative right-2 top-2 sm:right-auto sm:top-auto p-1.5 rounded-md hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors">
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center justify-between mt-5 pt-4 border-t border-border/30 gap-4">
+                          {sets.length < 3 ? (
+                            <Button type="button" variant="outline" size="sm" onClick={() => setSets([...sets, { p1: "", p2: "" }])} className="w-full sm:w-auto text-xs border-dashed">
+                              <Plus className="w-3 h-3 mr-1" /> Agregar 3er Set
+                            </Button>
+                          ) : <div />}
+                          
+                          <div className="flex gap-2 w-full sm:w-auto">
+                            <Button size="sm" variant="ghost" onClick={() => setRecordingId(null)} className="flex-1 sm:flex-none">Cancelar</Button>
+                            <Button size="sm" onClick={() => submitResult(c.id)} className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20">
+                              <Check className="w-4 h-4 mr-1.5" /> Guardar Resultado
+                            </Button>
                           </div>
-                        ))}
-                        {sets.length < 3 && (
-                          <button type="button" onClick={() => setSets([...sets, { p1: "", p2: "" }])} className="text-xs text-primary hover:underline">
-                            + Set 3
-                          </button>
-                        )}
-                        <div className="flex gap-2 mt-2">
-                          <Button size="sm" onClick={() => submitResult(c.id)}>Confirmar</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setRecordingId(null)}>Cancelar</Button>
                         </div>
                       </div>
                     )}

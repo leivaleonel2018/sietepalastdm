@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { authAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import { ArrowLeft, TrendingUp, TrendingDown, Trophy, Lock, Swords, Camera, Award } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, Trophy, Lock, Swords, Camera, Award, Star, Shield, Flame, Crown, Zap, Target } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -216,6 +216,32 @@ export default function PlayerProfile() {
   matches.forEach(m => { if (!matchesByTournament[m.tournament_id]) matchesByTournament[m.tournament_id] = []; matchesByTournament[m.tournament_id].push(m); });
   tournamentIds.forEach(tId => { if (!matchesByTournament[tId]) matchesByTournament[tId] = []; });
 
+  const renderBadgeIcon = (iconStr: string | null) => {
+    const s = iconStr?.toLowerCase();
+    // Legacy Lucide name mappings
+    if (s === "star") return <Star className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" />;
+    if (s === "shield") return <Shield className="w-8 h-8 text-slate-300 drop-shadow-[0_0_8px_rgba(203,213,225,0.5)]" />;
+    if (s === "medal") return <Award className="w-8 h-8 text-[#cd7f32] drop-shadow-[0_0_8px_rgba(205,127,50,0.5)]" />;
+    if (s === "flame") return <Flame className="w-8 h-8 text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]" />;
+    if (s === "crown") return <Crown className="w-8 h-8 text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]" />;
+    if (s === "zap") return <Zap className="w-8 h-8 text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]" />;
+    if (s === "target") return <Target className="w-8 h-8 text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />;
+    // Emoji-to-Lucide hero mappings for new badge system
+    if (iconStr === "🔰") return <Shield className="w-8 h-8 text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.6)]" />;
+    if (iconStr === "🔥") return <Flame className="w-8 h-8 text-orange-500 drop-shadow-[0_0_10px_rgba(249,115,22,0.6)]" />;
+    if (iconStr === "🏅") return <Award className="w-8 h-8 text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.6)]" />;
+    if (iconStr === "🛡️") return <Shield className="w-8 h-8 text-blue-400 drop-shadow-[0_0_10px_rgba(96,165,250,0.6)]" />;
+    if (iconStr === "🎖️") return <Award className="w-8 h-8 text-purple-400 drop-shadow-[0_0_10px_rgba(192,132,252,0.6)]" />;
+    if (iconStr === "👑") return <Crown className="w-8 h-8 text-yellow-500 drop-shadow-[0_0_10px_rgba(234,179,8,0.6)]" />;
+    if (iconStr === "⚡") return <Zap className="w-8 h-8 text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.6)]" />;
+    if (iconStr === "🔱") return <Trophy className="w-8 h-8 text-teal-400 drop-shadow-[0_0_10px_rgba(45,212,191,0.6)]" />;
+    if (iconStr === "⚔️") return <Swords className="w-8 h-8 text-red-400 drop-shadow-[0_0_10px_rgba(248,113,113,0.6)]" />;
+    if (iconStr === "🧠") return <Star className="w-8 h-8 text-violet-400 drop-shadow-[0_0_10px_rgba(167,139,250,0.6)]" />;
+    if (iconStr === "💎") return <Crown className="w-8 h-8 text-sky-300 drop-shadow-[0_0_12px_rgba(125,211,252,0.7)]" />;
+    // Fallback: render as emoji text
+    return <span className="text-3xl drop-shadow-md">{iconStr || "🎖️"}</span>;
+  };
+
   return (
     <div className="min-h-screen bg-background ping-pong-pattern">
       <Navbar />
@@ -298,15 +324,16 @@ export default function PlayerProfile() {
               return (
                 <Tooltip key={badge.id}>
                   <TooltipTrigger asChild>
-                    <div className={`aspect-square rounded-xl flex flex-col items-center justify-center text-center p-2 transition-all ${
+                    <div className={`aspect-square rounded-2xl flex flex-col items-center justify-center text-center p-2 transition-all duration-300 ${
                       isEarned
-                        ? "bg-primary/10 border-2 border-primary/30 cursor-default"
-                        : "bg-muted/50 border border-border opacity-40 grayscale cursor-help"
+                        ? "bg-gradient-to-br from-background to-muted border border-border/50 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.3)] hover:scale-105 cursor-default relative overflow-hidden group"
+                        : "bg-muted/30 border border-border/20 opacity-40 grayscale cursor-help"
                     }`}>
-                      <span className="text-2xl mb-0.5">
-                        {badge.icon_url && badge.icon_url.length <= 4 ? badge.icon_url : "🏅"}
-                      </span>
-                      <span className="text-[9px] font-medium text-foreground leading-tight">{badge.name}</span>
+                      {isEarned && <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>}
+                      <div className="mb-2 transition-transform duration-300 group-hover:-translate-y-1">
+                        {renderBadgeIcon(badge.icon_url)}
+                      </div>
+                      <span className="text-[10px] font-bold tracking-wide text-foreground leading-tight uppercase relative z-10">{badge.name}</span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -324,9 +351,12 @@ export default function PlayerProfile() {
               .map(eb => (
                 <Tooltip key={eb.id}>
                   <TooltipTrigger asChild>
-                    <div className="aspect-square rounded-xl flex flex-col items-center justify-center text-center p-2 bg-accent/10 border-2 border-accent/40 ring-2 ring-accent/20 cursor-default">
-                      <span className="text-2xl mb-0.5">👑</span>
-                      <span className="text-[9px] font-medium text-foreground leading-tight">Campeón</span>
+                    <div className="aspect-square rounded-2xl flex flex-col items-center justify-center text-center p-2 bg-gradient-to-br from-accent/20 to-background border border-accent/30 shadow-[0_4px_20px_-4px_rgba(var(--accent),0.3)] hover:scale-105 transition-all duration-300 cursor-default relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-gradient-to-tr from-accent/0 via-accent/10 to-accent/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                      <div className="mb-2 transition-transform duration-300 group-hover:-translate-y-1">
+                        <Trophy className="w-8 h-8 text-accent drop-shadow-[0_0_8px_rgba(var(--accent),0.5)]" />
+                      </div>
+                      <span className="text-[10px] font-bold tracking-wide text-foreground leading-tight uppercase relative z-10">Campeón</span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>

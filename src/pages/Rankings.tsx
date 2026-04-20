@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Navbar from "@/components/Navbar";
 import { Trophy, Medal, Crown } from "lucide-react";
+import AnimatedList from "@/components/AnimatedList";
 
 interface Player {
   id: string;
@@ -92,37 +93,38 @@ export default function Rankings() {
         ) : players.length === 0 ? (
           <div className="glass-card p-12 text-center text-muted-foreground">No hay jugadores registrados.</div>
         ) : (
-          <div className="glass-card overflow-hidden animate-slide-up stagger-2">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-muted/50">
-                  <th className="text-center px-4 py-2.5 text-xs font-semibold uppercase tracking-wide w-16">#</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide">Jugador</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-semibold uppercase tracking-wide">Rating</th>
-                </tr>
-              </thead>
-              <tbody>
-                {players.map((player, i) => (
-                  <tr key={player.id} className="border-t border-border/50 hover:bg-muted/30 transition-colors">
-                    <td className="text-center px-4 py-2.5 text-sm font-medium text-muted-foreground">
-                      <div className="flex items-center justify-center gap-1">
-                        {getRankIcon(i)}
-                        {i + 1}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Link to={`/jugador/${player.id}`} className="font-medium text-foreground hover:text-primary hover:underline transition-colors flex items-center gap-2.5">
-                        <PlayerAvatar player={player} size="w-7 h-7" />
-                        {player.full_name}
-                      </Link>
-                    </td>
-                    <td className="text-center px-4 py-2.5">
-                      <span className="text-sm font-semibold text-foreground">{player.rating}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="glass-card overflow-hidden animate-slide-up stagger-2 p-4">
+            <div className="flex bg-muted/50 px-4 py-2.5 mb-2 text-xs font-semibold uppercase tracking-wide rounded-lg">
+              <div className="w-12 text-center">#</div>
+              <div className="flex-1 px-4 text-left">Jugador</div>
+              <div className="w-24 text-right pr-4">Rating</div>
+            </div>
+            <AnimatedList
+              items={players}
+              className="w-full"
+              showGradients={true}
+              renderItem={(player, i, isSelected) => (
+                <div className={`flex items-center p-3 rounded-xl border transition-all ${isSelected ? 'bg-muted/80 border-primary/30 shadow-sm scale-[1.02]' : 'bg-card border-border/40 hover:border-border/80'}`}>
+                  <div className="w-12 flex justify-center text-sm font-bold text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center">
+                      {getRankIcon(i)}
+                      <span>#{i + 1}</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 px-4">
+                    <Link to={`/jugador/${player.id}`} className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-3 w-fit">
+                      <PlayerAvatar player={player} size="w-10 h-10" />
+                      {player.full_name}
+                    </Link>
+                  </div>
+                  <div className="w-24 text-right pr-2">
+                    <div className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-sm font-bold inline-block shadow-sm">
+                      {player.rating}
+                    </div>
+                  </div>
+                </div>
+              )}
+            />
           </div>
         )}
       </div>

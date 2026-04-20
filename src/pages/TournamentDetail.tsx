@@ -38,7 +38,7 @@ interface Match {
   match_order: number | null;
   rating_change_p1: number | null;
   rating_change_p2: number | null;
-  set_scores: any;
+  set_scores: Array<{p1: number, p2: number}> | null;
 }
 
 interface SetScore { p1: string; p2: string }
@@ -76,7 +76,7 @@ export default function TournamentDetail() {
     ]);
     setTournament(tRes.data as Tournament | null);
     setRegistrations((rRes.data || []) as unknown as Registration[]);
-    setMatches(mRes.data || []);
+    setMatches((mRes.data || []) as unknown as Match[]);
     const pMap: Record<string, string> = {};
     (rRes.data || []).forEach((r: any) => {
       if (r.players) pMap[r.player_id] = r.players.full_name;
@@ -188,30 +188,68 @@ export default function TournamentDetail() {
     matchesByRound[key].push(m);
   });
 
-  // Check if all matches in current round are complete
-  const allCurrentRoundComplete = eliminationMatches.length > 0 && eliminationMatches.filter(m => !m.winner_id).length === 0;
+  // Check if all matches in current round or group stage are complete
+  const allGroupMatchesComplete = groupMatches.length > 0 && groupMatches.every(m => m.winner_id);
+  const allEliminationMatchesComplete = eliminationMatches.length > 0 && eliminationMatches.every(m => m.winner_id);
+  const allCurrentRoundComplete = (groupMatches.length > 0 && eliminationMatches.length === 0) 
+    ? allGroupMatchesComplete 
+    : (eliminationMatches.length > 0 ? allEliminationMatchesComplete : false);
 
   const renderMatchCard = (m: Match) => {
-    const setDetail = m.set_scores ? (m.set_scores as Array<{p1:number;p2:number}>).map((s: any) => `${s.p1}-${s.p2}`).join(", ") : "";
+    const setDetail = m.set_scores ? m.set_scores.map((s) => `${s.p1}-${s.p2}`).join(", ") : "";
     const isRecording = recordingMatchId === m.id;
     const canRecord = isAdmin && !m.winner_id && m.player1_id && m.player2_id;
     const isFinal = m.round?.toLowerCase() === "final";
     const maxSets = isFinal ? 5 : 3;
 
     return (
-      <div key={m.id} className="px-4 py-3 rounded-lg bg-muted/30 text-sm">
-        <div className="flex items-center justify-between">
-          <span className={`flex-1 ${m.winner_id === m.player1_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-            {playersMap[m.player1_id || ""] || "TBD"}
-          </span>
-          <span className="font-heading font-bold text-foreground px-3">
-            {m.winner_id ? `${m.player1_score ?? "-"} : ${m.player2_score ?? "-"}` : "vs"}
-          </span>
-          <span className={`flex-1 text-right ${m.winner_id === m.player2_id ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-            {playersMap[m.player2_id || ""] || "TBD"}
-          </span>
+      <div key={m.id} className={`group relative overflow-hidden p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${isFinal ? "bg-gradient-to-br from-primary/20 via-background to-accent/10 border-primary/40" : "bg-card/80 backdrop-blur-md border-border/50 hover:border-primary/30"}`}>
+        {/* Decorative elements */}
+        <div className="absolute -right-4 -bottom-4 opacity-[0.03] pointer-events-none transform -rotate-12 group-hover:scale-110 transition-transform">
+          <Trophy className="w-20 h-20" />
         </div>
-        {setDetail && <p className="text-xs text-muted-foreground mt-1 text-center">{setDetail}</p>}
+
+        <div className="flex items-center justify-between mb-3 relative z-10">
+          <div className="flex-1 flex flex-col items-start min-w-0">
+            <span className={`text-sm truncate w-full ${m.winner_id === m.player1_id ? "font-bold text-primary" : "text-muted-foreground"}`}>
+              {playersMap[m.player1_id || ""] || "TBD"}
+            </span>
+            {m.rating_change_p1 !== null && m.rating_change_p1 !== 0 && (
+              <span className={`text-[10px] ${m.rating_change_p1 > 0 ? "text-green-500" : "text-red-500"}`}>
+                {m.rating_change_p1 > 0 ? "+" : ""}{m.rating_change_p1}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col items-center px-4">
+            <div className="bg-muted/50 px-3 py-1 rounded-full border border-border/20 shadow-inner">
+              <span className="font-heading font-black text-lg tracking-tighter text-foreground">
+                {m.winner_id ? `${m.player1_score ?? 0} - ${m.player2_score ?? 0}` : "VS"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col items-end min-w-0">
+            <span className={`text-sm truncate w-full text-right ${m.winner_id === m.player2_id ? "font-bold text-primary" : "text-muted-foreground"}`}>
+              {playersMap[m.player2_id || ""] || "TBD"}
+            </span>
+            {m.rating_change_p2 !== null && m.rating_change_p2 !== 0 && (
+              <span className={`text-[10px] ${m.rating_change_p2 > 0 ? "text-green-500" : "text-red-500"}`}>
+                {m.rating_change_p2 > 0 ? "+" : ""}{m.rating_change_p2}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {setDetail && (
+          <div className="flex justify-center gap-1.5 mt-2 relative z-10">
+            {m.set_scores?.map((s, i) => (
+              <span key={i} className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded border border-border/10 text-muted-foreground">
+                {s.p1}-{s.p2}
+              </span>
+            ))}
+          </div>
+        )}
 
         {canRecord && !isRecording && (
           <Button
@@ -226,23 +264,27 @@ export default function TournamentDetail() {
         )}
 
         {isRecording && (
-          <div className="mt-3 p-3 rounded-lg bg-card border border-border space-y-2">
-            <p className="text-xs text-muted-foreground">Mejor de {maxSets === 5 ? "5 (final)" : "3"}</p>
-            {matchSets.map((set, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-8">S{i + 1}</span>
-                <Input type="number" placeholder="J1" value={set.p1} min="0"
-                  onChange={e => { const n = [...matchSets]; n[i] = { ...n[i], p1: e.target.value }; setMatchSets(n); }}
-                  className="w-20 h-8 text-sm" />
-                <span className="text-muted-foreground">-</span>
-                <Input type="number" placeholder="J2" value={set.p2} min="0"
-                  onChange={e => { const n = [...matchSets]; n[i] = { ...n[i], p2: e.target.value }; setMatchSets(n); }}
-                  className="w-20 h-8 text-sm" />
-                {matchSets.length > 2 && (
-                  <button type="button" onClick={() => setMatchSets(matchSets.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive text-xs">✕</button>
-                )}
-              </div>
-            ))}
+          <div className="mt-3 space-y-3">
+            <div className="space-y-3 p-3 rounded-xl bg-black/20 border border-white/5">
+              <p className="text-xs text-muted-foreground">Mejor de {maxSets === 5 ? "5 (final)" : "3"}</p>
+              {matchSets.map((set, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="text-[10px] font-bold text-primary/80 w-6">S{i + 1}</span>
+                  <div className="flex-1 flex items-center gap-2">
+                    <Input type="number" placeholder="0" value={set.p1} min="0"
+                      onChange={e => { const n = [...matchSets]; n[i] = { ...n[i], p1: e.target.value }; setMatchSets(n); }}
+                      className="w-full h-9 text-center font-heading font-bold bg-background/50 border-primary/20 focus-visible:ring-primary shadow-inner" />
+                    <span className="text-muted-foreground/30">:</span>
+                    <Input type="number" placeholder="0" value={set.p2} min="0"
+                      onChange={e => { const n = [...matchSets]; n[i] = { ...n[i], p2: e.target.value }; setMatchSets(n); }}
+                      className="w-full h-9 text-center font-heading font-bold bg-background/50 border-primary/20 focus-visible:ring-primary shadow-inner" />
+                  </div>
+                  {matchSets.length > 2 && (
+                    <button type="button" onClick={() => setMatchSets(matchSets.filter((_, j) => j !== i))} className="p-1.5 rounded-md hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors">✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
             {matchSets.length < maxSets && (
               <button type="button" onClick={() => setMatchSets([...matchSets, { p1: "", p2: "" }])} className="text-xs text-primary hover:underline">
                 + Agregar set
@@ -373,28 +415,65 @@ export default function TournamentDetail() {
               return (
                 <div key={gName} className="glass-card p-4">
                   <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-2">{gName}</h3>
-                  <div className="space-y-1.5">{gMatches.map(renderMatchCard)}</div>
+                  <div className="space-y-3">{gMatches.map(renderMatchCard)}</div>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Elimination Matches */}
-        {Object.keys(matchesByRound).length > 0 && (
-          <div className="space-y-3 animate-slide-up stagger-3">
-            <h2 className="font-heading font-semibold text-sm text-foreground flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-primary" />
-              {groupNames.length > 0 ? "Fase Eliminatoria" : "Partidos"}
-            </h2>
-            {Object.entries(matchesByRound).map(([key, roundMatches]) => (
-              <div key={key} className="glass-card p-4">
-                <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-2">{key}</h3>
-                <div className="space-y-1.5">{roundMatches.map(renderMatchCard)}</div>
+        {/* Elimination Matches (Bracket View) */}
+        {Object.keys(matchesByRound).length > 0 && (() => {
+          const ROUND_WEIGHTS: Record<string, number> = { "final": 100, "semifinal": 90, "cuartos": 80, "octavos": 70, "16vos": 60, "32vos": 50, "64vos": 40 };
+          const getRoundWeight = (r: string) => {
+            const low = r.toLowerCase();
+            if (ROUND_WEIGHTS[low]) return ROUND_WEIGHTS[low];
+            const m = low.match(/ronda de (\d+)/);
+            if (m) return 100 - parseInt(m[1]);
+            return 0;
+          };
+          const orderedRounds = Object.keys(matchesByRound).sort((a, b) => getRoundWeight(a) - getRoundWeight(b));
+
+          return (
+            <div className="space-y-3 animate-slide-up stagger-3">
+              <h2 className="font-heading font-semibold text-sm text-foreground flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-primary" />
+                {groupNames.length > 0 ? "Fase Eliminatoria" : "Brackets del Torneo"}
+              </h2>
+              <div className="glass-card p-6 overflow-x-auto hide-scrollbar relative">
+                <div className="flex gap-12 min-w-max pb-4 items-stretch">
+                  {orderedRounds.map((roundName, roundIdx) => (
+                    <div key={roundName} className="flex flex-col min-w-[280px]">
+                      <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-6 text-center bg-primary/10 py-2 rounded-md border border-primary/20 shadow-sm">{roundName}</h3>
+                      <div className="flex flex-col justify-around flex-1 gap-6 relative">
+                        {matchesByRound[roundName].sort((a, b) => (a.match_order || 0) - (b.match_order || 0)).map((match, mIdx) => (
+                          <div key={match.id} className="relative group">
+                            {roundIdx < orderedRounds.length - 1 && (
+                              <div className={`absolute top-1/2 -right-8 w-8 border-t-2 border-primary/20 group-hover:border-primary/40 transition-colors z-0 ${mIdx % 2 === 0 ? "rounded-tr-lg" : "rounded-br-lg"}`} style={{ height: 'calc(50% + 1rem)', borderLeft: '2px solid hsl(var(--primary) / 0.2)', borderRight: '0' }}>
+                                {mIdx % 2 === 0 ? (
+                                  <div className="absolute top-0 right-0 w-2 h-2 rounded-full bg-primary/20 -translate-y-1/2 translate-x-1/2" />
+                                ) : (
+                                  <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-primary/20 translate-y-1/2 translate-x-1/2" />
+                                )}
+                              </div>
+                            )}
+                            {roundIdx > 0 && (
+                              <div className="absolute top-1/2 -left-8 w-8 h-[2px] bg-primary/20 z-0">
+                                <div className="absolute left-0 top-0 w-2 h-2 rounded-full bg-primary/20 -translate-y-1/2 -translate-x-1/2" />
+                              </div>
+                            )}
+                            
+                            {renderMatchCard(match)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

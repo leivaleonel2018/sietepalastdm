@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trophy, Users, LogIn, LogOut, Shield, Menu, X, Swords, BookOpen } from "lucide-react";
+import { Trophy, Users, LogIn, LogOut, Shield, Menu, X, Swords, BookOpen, Home, Newspaper } from "lucide-react";
 import { useState } from "react";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
@@ -12,18 +12,20 @@ export default function Navbar() {
   const isActive = (path: string) => location.pathname === path;
 
   const navLinks = [
-    { to: "/", label: "Inicio", icon: null },
+    { to: "/", label: "Inicio", icon: <Home className="w-4 h-4" /> },
     { to: "/rankings", label: "Rankings", icon: <Users className="w-4 h-4" /> },
     { to: "/torneos", label: "Torneos", icon: <Trophy className="w-4 h-4" /> },
     { to: "/desafios", label: "Desafíos", icon: <Swords className="w-4 h-4" /> },
     { to: "/reglas", label: "Reglas", icon: <BookOpen className="w-4 h-4" /> },
+    { to: "/noticias", label: "Noticias", icon: <Newspaper className="w-4 h-4" /> },
   ];
 
   return (
+    <>
     <nav className="nav-dark sticky top-0 z-50 border-b border-border/10 backdrop-blur-md">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-14">
-          <Link to="/" className="flex items-center gap-2 text-primary-foreground font-heading font-bold text-lg hover:opacity-90 transition-opacity">
+          <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 text-primary-foreground font-heading font-bold text-lg hover:opacity-90 transition-opacity">
             🏓 TDM
           </Link>
 
@@ -58,7 +60,7 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-3">
             {player && (
               <Link to={`/jugador/${player.id}`} className="flex items-center gap-2 text-primary-foreground/50 text-sm hover:text-primary-foreground transition-colors">
-                <PlayerAvatar name={player.full_name} avatarUrl={(player as any).avatar_url} size="xs" />
+                <PlayerAvatar name={player.full_name} avatarUrl={player.avatar_url} size="xs" />
                 {player.full_name} · <span className="font-semibold text-primary-foreground/80">{player.rating}</span>
               </Link>
             )}
@@ -79,54 +81,121 @@ export default function Navbar() {
             )}
           </div>
 
-          <button className="md:hidden text-primary-foreground/80" onClick={() => setMenuOpen(!menuOpen)}>
-            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
         </div>
-
-        {menuOpen && (
-          <div className="md:hidden pb-3 space-y-1 animate-slide-up">
-            {/* Mobile: show player info */}
-            {player && (
-              <Link
-                to={`/jugador/${player.id}`}
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-3 px-3 py-3 rounded-lg bg-primary-foreground/5 mb-2"
-              >
-                <PlayerAvatar name={player.full_name} avatarUrl={(player as any).avatar_url} size="md" />
-                <div>
-                  <p className="text-sm font-semibold text-primary-foreground">{player.full_name}</p>
-                  <p className="text-xs text-primary-foreground/60">Rating: <span className="font-bold text-primary-foreground/80">{player.rating}</span></p>
-                </div>
-              </Link>
-            )}
-            {navLinks.map(link => (
-              <Link
-                key={link.to}
-                to={link.to}
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-primary-foreground/70 hover:bg-primary-foreground/5 text-sm"
-              >
-                {link.icon}{link.label}
-              </Link>
-            ))}
-            {isAdmin && (
-              <Link to="/admin" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-primary-foreground/70 text-sm">
-                <Shield className="w-4 h-4" />Admin
-              </Link>
-            )}
-            {(player || isAdmin) ? (
-              <button onClick={() => { logout(); setMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 rounded-lg text-primary-foreground/70 text-sm w-full">
-                <LogOut className="w-4 h-4" />Salir
-              </button>
-            ) : (
-              <Link to="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-primary-foreground/70 text-sm">
-                <LogIn className="w-4 h-4" />Ingresar
-              </Link>
-            )}
-          </div>
-        )}
       </div>
     </nav>
+    
+    {/* Mobile Bottom Navigation - rendered outside nav to avoid stacking context issues */}
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-[60] bg-background/95 backdrop-blur-xl border-t border-border/20 flex justify-around items-center h-[72px] pb-safe px-2 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
+      {navLinks.slice(0, 4).map(link => (
+        <Link
+          key={link.to}
+          to={link.to}
+          onClick={() => setMenuOpen(false)}
+          className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-300 ${
+            isActive(link.to) 
+              ? "text-primary -translate-y-1" 
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <div className={`p-1.5 rounded-full transition-colors ${isActive(link.to) ? "bg-primary/20" : "bg-transparent"}`}>
+            {link.icon}
+          </div>
+          <span className="text-[10px] font-bold tracking-wide">{link.label}</span>
+        </Link>
+      ))}
+      <button 
+        onClick={() => setMenuOpen(!menuOpen)} 
+        className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-300 ${menuOpen ? "text-primary -translate-y-1" : "text-muted-foreground hover:text-foreground"}`}
+      >
+         <div className={`p-1.5 rounded-full transition-colors ${menuOpen ? "bg-primary/20" : "bg-transparent"}`}>
+           {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+         </div>
+         <span className="text-[10px] font-bold tracking-wide">{menuOpen ? "Cerrar" : "Más"}</span>
+      </button>
+    </div>
+
+    {/* Mobile Menu Overlay */}
+    {menuOpen && (
+      <div 
+        className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-[55] animate-in fade-in duration-300"
+        onClick={() => setMenuOpen(false)}
+      />
+    )}
+
+    {/* Mobile Menu Expanded */}
+    {menuOpen && (
+      <div className="md:hidden fixed bottom-[72px] left-0 right-0 bg-background/98 backdrop-blur-2xl border-t border-border/20 p-5 rounded-t-[2.5rem] shadow-[0_-20px_50px_rgba(0,0,0,0.6)] z-[58] animate-slide-up flex flex-col gap-4">
+        <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full mx-auto mb-2" />
+        
+        {/* Mobile: show player info */}
+        {player && (
+          <Link
+            to={`/jugador/${player.id}`}
+            onClick={() => setMenuOpen(false)}
+            className="flex items-center gap-4 px-4 py-4 rounded-3xl bg-muted/30 border border-border/10 mb-2"
+          >
+            <PlayerAvatar name={player.full_name} avatarUrl={player.avatar_url} size="md" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-foreground">{player.full_name}</p>
+              <p className="text-xs text-muted-foreground">Rating: <span className="font-bold text-primary">{player.rating}</span></p>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <Shield className="w-4 h-4 text-primary" />
+            </div>
+          </Link>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          {/* Extra links not in bottom bar */}
+          {navLinks.slice(4).map(link => (
+            <Link
+              key={link.to}
+              to={link.to}
+              onClick={() => setMenuOpen(false)}
+              className="flex flex-col items-center gap-2 p-4 rounded-3xl bg-muted/20 border border-border/5 hover:bg-primary/10 hover:border-primary/20 transition-all"
+            >
+              <div className="p-2 rounded-2xl bg-primary/5 text-primary">
+                {link.icon}
+              </div>
+              <span className="text-xs font-bold text-foreground">{link.label}</span>
+            </Link>
+          ))}
+
+          {isAdmin && (
+            <Link 
+              to="/admin" 
+              onClick={() => setMenuOpen(false)} 
+              className="flex flex-col items-center gap-2 p-4 rounded-3xl bg-muted/20 border border-border/5 hover:bg-primary/10 hover:border-primary/20 transition-all"
+            >
+              <div className="p-2 rounded-2xl bg-primary/5 text-primary">
+                <Shield className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-bold text-foreground">Admin</span>
+            </Link>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 mt-2">
+          {(player || isAdmin) ? (
+            <button 
+              onClick={() => { logout(); setMenuOpen(false); }} 
+              className="flex items-center justify-center gap-2 px-6 py-4 rounded-3xl bg-destructive/10 text-destructive border border-destructive/20 text-sm font-bold w-full transition-all hover:bg-destructive hover:text-white"
+            >
+              <LogOut className="w-4 h-4" /> Cerrar Sesión
+            </button>
+          ) : (
+            <Link 
+              to="/login" 
+              onClick={() => setMenuOpen(false)} 
+              className="flex items-center justify-center gap-2 px-6 py-4 rounded-3xl bg-primary text-white text-sm font-bold w-full shadow-lg shadow-primary/25 transition-all active:scale-95"
+            >
+              <LogIn className="w-4 h-4" /> Ingresar a la App
+            </Link>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   );
 }

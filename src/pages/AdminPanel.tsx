@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, CheckCircle, Award, Zap, LogIn, Newspaper, Image, Trophy, Users, Search, Shield } from "lucide-react";
+import { Plus, Trash2, CheckCircle, Award, Zap, LogIn, Newspaper, Image, Trophy, Users, Search, Shield, Swords } from "lucide-react";
+import AnimatedList from "@/components/AnimatedList";
 
 interface Tournament { id: string; name: string; format: string; type: string; status: string; max_players: number | null; groups_count: number | null; created_at: string; }
 interface Player { id: string; full_name: string; rating: number; }
@@ -36,6 +37,8 @@ export default function AdminPanel() {
   const [playerSearch, setPlayerSearch] = useState("");
   const [badgeForm, setBadgeForm] = useState({ name: "", description: "", icon_url: "", type: "manual" });
   const [awardForm, setAwardForm] = useState({ player_id: "", badge_id: "" });
+  const [editRatingForm, setEditRatingForm] = useState({ player_id: "", rating: "" });
+  const [challengeForm, setChallengeForm] = useState({ challenger_id: "", challenged_id: "" });
 
   useEffect(() => { if (isAdmin) fetchAll(); }, [isAdmin]);
 
@@ -90,6 +93,26 @@ export default function AdminPanel() {
     if (data.error) { toast.error(data.error); return; }
     toast.success("Jugador eliminado");
     fetchAll();
+  };
+
+  const editPlayerRating = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    const data = await adminAction("edit_rating", { player_id: editRatingForm.player_id, rating: editRatingForm.rating }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Rating actualizado");
+    setEditRatingForm({ player_id: "", rating: "" });
+    fetchAll();
+  };
+
+  const adminCreateChallenge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    if (challengeForm.challenger_id === challengeForm.challenged_id) { toast.error("Jugadores iguales"); return; }
+    const data = await adminAction("admin_create_challenge", { challenger_id: challengeForm.challenger_id, challenged_id: challengeForm.challenged_id }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Desafío creado como Aceptado");
+    setChallengeForm({ challenger_id: "", challenged_id: "" });
   };
 
   const publishNews = async (e: React.FormEvent) => {
@@ -324,27 +347,70 @@ export default function AdminPanel() {
 
         {/* PLAYERS TAB */}
         {activeTab === "players" && (
-          <div className="glass-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-heading font-semibold text-sm text-foreground">Jugadores ({players.length})</h2>
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input value={playerSearch} onChange={e => setPlayerSearch(e.target.value)} placeholder="Buscar por nombre..." className="pl-9 h-9 text-sm" />
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-heading font-semibold text-sm text-foreground">Jugadores ({players.length})</h2>
+                <div className="relative w-48">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input value={playerSearch} onChange={e => setPlayerSearch(e.target.value)} placeholder="Buscar..." className="pl-9 h-9 text-sm" />
+                </div>
+              </div>
+              <div className="space-y-1 max-h-[32rem] overflow-y-auto">
+                {filteredPlayers.map(p => (
+                  <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors text-sm group">
+                    <span className="text-foreground font-medium">{p.full_name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground font-heading font-semibold">{p.rating}</span>
+                      <button onClick={() => deletePlayer(p.id, p.full_name)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {filteredPlayers.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">Sin resultados</p>}
               </div>
             </div>
-            <div className="space-y-1 max-h-[32rem] overflow-y-auto">
-              {filteredPlayers.map(p => (
-                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/30 text-sm group">
-                  <span className="text-foreground font-medium">{p.full_name}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-muted-foreground font-heading font-semibold">{p.rating}</span>
-                    <button onClick={() => deletePlayer(p.id, p.full_name)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+            
+            <div className="space-y-4">
+              <div className="glass-card p-5">
+                <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Award className="w-4 h-4" /> Editar Rating Manual</h2>
+                <form onSubmit={editPlayerRating} className="space-y-2.5">
+                  <div><Label className="text-xs">Jugador</Label>
+                    <Select value={editRatingForm.player_id} onValueChange={v => {
+                      const p = players.find(x => x.id === v);
+                      setEditRatingForm({ player_id: v, rating: p ? p.rating.toString() : "" });
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
+                    </Select>
                   </div>
-                </div>
-              ))}
-              {filteredPlayers.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">Sin resultados</p>}
+                  <div><Label className="text-xs">Nuevo Rating</Label>
+                    <Input type="number" value={editRatingForm.rating} onChange={e => setEditRatingForm(p => ({...p, rating: e.target.value}))} required />
+                  </div>
+                  <Button type="submit" className="w-full" variant="outline" disabled={!editRatingForm.player_id || !editRatingForm.rating}>Actualizar Rating</Button>
+                </form>
+              </div>
+
+              <div className="glass-card p-5">
+                <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Swords className="w-4 h-4" /> Crear Desafío</h2>
+                <form onSubmit={adminCreateChallenge} className="space-y-2.5">
+                  <div><Label className="text-xs">Jugador 1</Label>
+                    <Select value={challengeForm.challenger_id} onValueChange={v => setChallengeForm(p => ({...p, challenger_id: v}))}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
+                  <div><Label className="text-xs">Jugador 2</Label>
+                    <Select value={challengeForm.challenged_id} onValueChange={v => setChallengeForm(p => ({...p, challenged_id: v}))}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="submit" className="w-full" variant="outline" disabled={!challengeForm.challenger_id || !challengeForm.challenged_id}>Forzar Desafío</Button>
+                  <p className="text-[10px] text-muted-foreground text-center mt-1">Ir a la pestaña de Desafíos en la app para registrar el resultado.</p>
+                </form>
+              </div>
             </div>
           </div>
         )}

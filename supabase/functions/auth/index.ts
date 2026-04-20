@@ -34,9 +34,28 @@ function calcRatingChange(r1: number, r2: number, p1Wins: boolean) {
 }
 
 async function checkAndAwardBadges(supabase: any, playerId: string) {
+  const badgeDefs = [
+    { name: "Iniciación", icon_url: "🔰", description: "1 partido jugado", type: "automatic" },
+    { name: "Bautismo de Fuego", icon_url: "🔥", description: "Primera victoria", type: "automatic" },
+    { name: "Competidor", icon_url: "🏅", description: "Primer torneo", type: "automatic" },
+    { name: "Tenacidad", icon_url: "🛡️", description: "10 partidos jugados", type: "automatic" },
+    { name: "Veterano", icon_url: "🎖️", description: "50 partidos jugados", type: "automatic" },
+    { name: "Leyenda Local", icon_url: "👑", description: "100 partidos jugados", type: "automatic" },
+    { name: "Racha Imparable", icon_url: "⚡", description: "3 victorias seguidas", type: "automatic" },
+    { name: "Invicto", icon_url: "🔱", description: "5 victorias seguidas", type: "automatic" },
+    { name: "Guerrero", icon_url: "⚔️", description: "10 victorias totales", type: "automatic" },
+    { name: "Maestro", icon_url: "🧠", description: "50 victorias totales", type: "automatic" },
+    { name: "Gran Maestro", icon_url: "💎", description: "100 victorias totales", type: "automatic" },
+  ];
+
+  // Auto-create missing automatic badges
+  for (const b of badgeDefs) {
+    const { data } = await supabase.from("badges").select("id").eq("name", b.name).single();
+    if (!data) await supabase.from("badges").insert(b);
+  }
+
   const { data: badges } = await supabase.from("badges").select("id, name, type").eq("type", "automatic");
   if (!badges) return;
-
   const { data: existingBadges } = await supabase.from("player_badges").select("badge_id").eq("player_id", playerId);
   const hasBadge = (name: string) => {
     const badge = badges.find((b: any) => b.name === name);
@@ -44,41 +63,40 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   };
   const getBadgeId = (name: string) => badges.find((b: any) => b.name === name)?.id;
 
-  // Count matches and wins
-  const { count: matchCount } = await supabase.from("matches").select("id", { count: "exact", head: true })
-    .or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`);
-  const { count: challengeMatchCount } = await supabase.from("challenges").select("id", { count: "exact", head: true })
-    .or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed");
+  const { count: matchCount } = await supabase.from("matches").select("id", { count: "exact", head: true }).or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`);
+  const { count: challengeMatchCount } = await supabase.from("challenges").select("id", { count: "exact", head: true }).or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed");
   const totalPlayed = (matchCount || 0) + (challengeMatchCount || 0);
-
+  
   const { count: matchWins } = await supabase.from("matches").select("id", { count: "exact", head: true }).eq("winner_id", playerId);
   const { count: challengeWins } = await supabase.from("challenges").select("id", { count: "exact", head: true }).eq("winner_id", playerId).eq("status", "completed");
   const totalWins = (matchWins || 0) + (challengeWins || 0);
 
   const { count: tournamentCount } = await supabase.from("tournament_registrations").select("id", { count: "exact", head: true }).eq("player_id", playerId);
 
-  const toAward: string[] = [];
-
-  if (totalPlayed >= 1 && !hasBadge("Primer partido")) { const id = getBadgeId("Primer partido"); if (id) toAward.push(id); }
-  if (totalWins >= 1 && !hasBadge("Primera victoria")) { const id = getBadgeId("Primera victoria"); if (id) toAward.push(id); }
-  if ((tournamentCount || 0) >= 1 && !hasBadge("Primer torneo")) { const id = getBadgeId("Primer torneo"); if (id) toAward.push(id); }
-  if (totalWins >= 10 && !hasBadge("10 victorias")) { const id = getBadgeId("10 victorias"); if (id) toAward.push(id); }
-
-  // Check streaks - get last N matches ordered by date
   const { data: recentMatches } = await supabase.from("matches").select("winner_id").or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`).order("created_at", { ascending: false }).limit(5);
   const { data: recentChallenges } = await supabase.from("challenges").select("winner_id").or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed").order("created_at", { ascending: false }).limit(5);
-
-  const allRecent = [...(recentMatches || []), ...(recentChallenges || [])];
+  const allRecent = [...(recentMatches || []), ...(recentChallenges || [])].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  
   let streak = 0;
   for (const r of allRecent) { if (r.winner_id === playerId) streak++; else break; }
 
-  if (streak >= 3 && !hasBadge("Racha x3")) { const id = getBadgeId("Racha x3"); if (id) toAward.push(id); }
-  if (streak >= 5 && !hasBadge("Racha x5")) { const id = getBadgeId("Racha x5"); if (id) toAward.push(id); }
+  const toAward: string[] = [];
+  const awardIfMissing = (name: string, cond: boolean) => { if (cond && !hasBadge(name)) { const id = getBadgeId(name); if (id) toAward.push(id); } };
+
+  awardIfMissing("Iniciación", totalPlayed >= 1);
+  awardIfMissing("Bautismo de Fuego", totalWins >= 1);
+  awardIfMissing("Competidor", (tournamentCount || 0) >= 1);
+  awardIfMissing("Tenacidad", totalPlayed >= 10);
+  awardIfMissing("Veterano", totalPlayed >= 50);
+  awardIfMissing("Leyenda Local", totalPlayed >= 100);
+  awardIfMissing("Racha Imparable", streak >= 3);
+  awardIfMissing("Invicto", streak >= 5);
+  awardIfMissing("Guerrero", totalWins >= 10);
+  awardIfMissing("Maestro", totalWins >= 50);
+  awardIfMissing("Gran Maestro", totalWins >= 100);
 
   if (toAward.length > 0) {
-    await supabase.from("player_badges").insert(
-      toAward.map(badge_id => ({ player_id: playerId, badge_id }))
-    );
+    await supabase.from("player_badges").insert(toAward.map(badge_id => ({ player_id: playerId, badge_id })));
   }
 }
 
@@ -180,7 +198,6 @@ Deno.serve(async (req) => {
       const { data: challenge, error: cErr } = await supabase.from("challenges").select("*").eq("id", challenge_id).eq("status", "accepted").single();
       if (cErr || !challenge) return respond({ error: "Desafío no encontrado o no aceptado" });
 
-      // Allow participants OR designated registrars to record results
       const isParticipant = challenge.challenger_id === player_id || challenge.challenged_id === player_id;
       let isRegistrar = false;
       if (!isParticipant) {
@@ -212,10 +229,8 @@ Deno.serve(async (req) => {
         winner_id, rating_change_challenger: rc1, rating_change_challenged: rc2,
       }).eq("id", challenge_id);
 
-      // Check badges for both players
       await checkAndAwardBadges(supabase, challenge.challenger_id);
       await checkAndAwardBadges(supabase, challenge.challenged_id);
-
       return respond({ success: true });
     }
 

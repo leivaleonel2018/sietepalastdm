@@ -6,6 +6,7 @@ interface Player {
   full_name: string;
   dni: string;
   rating: number;
+  avatar_url?: string | null;
 }
 
 interface AuthState {

@@ -131,7 +131,7 @@ export default function GlobalChat() {
       {/* FAB */}
       <button
         onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
+        className="fixed bottom-24 right-6 md:bottom-6 md:right-6 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105 active:scale-95"
       >
         {open ? <X className="w-6 h-6" /> : <MessageCircle className="w-6 h-6" />}
         {!open && unread > 0 && (
@@ -141,9 +141,17 @@ export default function GlobalChat() {
         )}
       </button>
 
+      {/* Overlay to close menu */}
+      {open && (
+        <div 
+          className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40 animate-in fade-in duration-300"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       {/* Chat Panel */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 md:w-96 h-[28rem] glass-card flex flex-col shadow-2xl animate-slide-up overflow-hidden">
+        <div className="fixed bottom-24 right-6 md:bottom-24 md:right-6 z-50 w-[calc(100%-3rem)] md:w-96 h-[28rem] glass-card flex flex-col shadow-2xl animate-slide-up overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
             <h3 className="font-heading font-semibold text-sm text-foreground flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-primary" /> Chat Global

@@ -36,6 +36,26 @@ const PLACEMENT_POINTS: Record<string, number> = {
 };
 
 async function checkAndAwardBadges(supabase: any, playerId: string) {
+  const badgeDefs = [
+    { name: "Iniciación", icon_url: "🔰", description: "1 partido jugado", type: "automatic" },
+    { name: "Bautismo de Fuego", icon_url: "🔥", description: "Primera victoria", type: "automatic" },
+    { name: "Competidor", icon_url: "🏅", description: "Primer torneo", type: "automatic" },
+    { name: "Tenacidad", icon_url: "🛡️", description: "10 partidos jugados", type: "automatic" },
+    { name: "Veterano", icon_url: "🎖️", description: "50 partidos jugados", type: "automatic" },
+    { name: "Leyenda Local", icon_url: "👑", description: "100 partidos jugados", type: "automatic" },
+    { name: "Racha Imparable", icon_url: "⚡", description: "3 victorias seguidas", type: "automatic" },
+    { name: "Invicto", icon_url: "🔱", description: "5 victorias seguidas", type: "automatic" },
+    { name: "Guerrero", icon_url: "⚔️", description: "10 victorias totales", type: "automatic" },
+    { name: "Maestro", icon_url: "🧠", description: "50 victorias totales", type: "automatic" },
+    { name: "Gran Maestro", icon_url: "💎", description: "100 victorias totales", type: "automatic" },
+  ];
+
+  // Auto-create missing automatic badges
+  for (const b of badgeDefs) {
+    const { data } = await supabase.from("badges").select("id").eq("name", b.name).single();
+    if (!data) await supabase.from("badges").insert(b);
+  }
+
   const { data: badges } = await supabase.from("badges").select("id, name, type").eq("type", "automatic");
   if (!badges) return;
   const { data: existingBadges } = await supabase.from("player_badges").select("badge_id").eq("player_id", playerId);
@@ -48,16 +68,34 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   const { count: matchCount } = await supabase.from("matches").select("id", { count: "exact", head: true }).or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`);
   const { count: challengeMatchCount } = await supabase.from("challenges").select("id", { count: "exact", head: true }).or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed");
   const totalPlayed = (matchCount || 0) + (challengeMatchCount || 0);
+  
   const { count: matchWins } = await supabase.from("matches").select("id", { count: "exact", head: true }).eq("winner_id", playerId);
   const { count: challengeWins } = await supabase.from("challenges").select("id", { count: "exact", head: true }).eq("winner_id", playerId).eq("status", "completed");
   const totalWins = (matchWins || 0) + (challengeWins || 0);
+
   const { count: tournamentCount } = await supabase.from("tournament_registrations").select("id", { count: "exact", head: true }).eq("player_id", playerId);
 
+  const { data: recentMatches } = await supabase.from("matches").select("winner_id, created_at").or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`).order("created_at", { ascending: false }).limit(5);
+  const { data: recentChallenges } = await supabase.from("challenges").select("winner_id, created_at").or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed").order("created_at", { ascending: false }).limit(5);
+  const allRecent = [...(recentMatches || []), ...(recentChallenges || [])].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+  
+  let streak = 0;
+  for (const r of allRecent) { if (r.winner_id === playerId) streak++; else break; }
+
   const toAward: string[] = [];
-  if (totalPlayed >= 1 && !hasBadge("Primer partido")) { const id = getBadgeId("Primer partido"); if (id) toAward.push(id); }
-  if (totalWins >= 1 && !hasBadge("Primera victoria")) { const id = getBadgeId("Primera victoria"); if (id) toAward.push(id); }
-  if ((tournamentCount || 0) >= 1 && !hasBadge("Primer torneo")) { const id = getBadgeId("Primer torneo"); if (id) toAward.push(id); }
-  if (totalWins >= 10 && !hasBadge("10 victorias")) { const id = getBadgeId("10 victorias"); if (id) toAward.push(id); }
+  const awardIfMissing = (name: string, cond: boolean) => { if (cond && !hasBadge(name)) { const id = getBadgeId(name); if (id) toAward.push(id); } };
+
+  awardIfMissing("Iniciación", totalPlayed >= 1);
+  awardIfMissing("Bautismo de Fuego", totalWins >= 1);
+  awardIfMissing("Competidor", (tournamentCount || 0) >= 1);
+  awardIfMissing("Tenacidad", totalPlayed >= 10);
+  awardIfMissing("Veterano", totalPlayed >= 50);
+  awardIfMissing("Leyenda Local", totalPlayed >= 100);
+  awardIfMissing("Racha Imparable", streak >= 3);
+  awardIfMissing("Invicto", streak >= 5);
+  awardIfMissing("Guerrero", totalWins >= 10);
+  awardIfMissing("Maestro", totalWins >= 50);
+  awardIfMissing("Gran Maestro", totalWins >= 100);
 
   if (toAward.length > 0) {
     await supabase.from("player_badges").insert(toAward.map(badge_id => ({ player_id: playerId, badge_id })));
@@ -228,6 +266,53 @@ Deno.serve(async (req) => {
       return respond({ success: true, points });
     }
 
+    if (action === "edit_rating") {
+      const { player_id, rating } = data;
+      const { error } = await supabase.from("players").update({ rating: Number(rating) }).eq("id", player_id);
+      if (error) throw error;
+      return respond({ success: true });
+    }
+
+    if (action === "admin_create_challenge") {
+      const { challenger_id, challenged_id } = data;
+      const { error } = await supabase.from("challenges").insert({ challenger_id, challenged_id, status: "accepted" });
+      if (error) throw error;
+      return respond({ success: true });
+    }
+
+    if (action === "admin_record_challenge_result") {
+      const { challenge_id, set_scores } = data;
+      const { data: challenge, error: cErr } = await supabase.from("challenges").select("*").eq("id", challenge_id).single();
+      if (cErr || !challenge) return respond({ error: "Desafío no encontrado" });
+
+      let cSetsWon = 0, dSetsWon = 0;
+      if (set_scores && Array.isArray(set_scores)) {
+        for (const s of set_scores) { if (s.p1 > s.p2) cSetsWon++; else if (s.p2 > s.p1) dSetsWon++; }
+      }
+      const winner_id = cSetsWon > dSetsWon ? challenge.challenger_id : challenge.challenged_id;
+
+      const { data: players } = await supabase.from("players").select("id, rating").in("id", [challenge.challenger_id, challenge.challenged_id]);
+      const p1 = players?.find((p: any) => p.id === challenge.challenger_id);
+      const p2 = players?.find((p: any) => p.id === challenge.challenged_id);
+      let rc1 = 0, rc2 = 0;
+      if (p1 && p2) {
+        const { change1, change2 } = calcRatingChange(p1.rating, p2.rating, winner_id === challenge.challenger_id);
+        rc1 = change1; rc2 = change2;
+        await supabase.from("players").update({ rating: p1.rating + rc1 }).eq("id", challenge.challenger_id);
+        await supabase.from("players").update({ rating: p2.rating + rc2 }).eq("id", challenge.challenged_id);
+      }
+
+      await supabase.from("challenges").update({
+        status: "completed", set_scores, challenger_sets_won: cSetsWon, challenged_sets_won: dSetsWon,
+        winner_id, rating_change_challenger: rc1, rating_change_challenged: rc2,
+      }).eq("id", challenge_id);
+      
+      await checkAndAwardBadges(supabase, challenge.challenger_id);
+      await checkAndAwardBadges(supabase, challenge.challenged_id);
+      
+      return respond({ success: true });
+    }
+
     if (action === "register_player_tournament") {
       const { tournament_id, player_id } = data;
       const { error } = await supabase.from("tournament_registrations").insert({ tournament_id, player_id });
@@ -277,19 +362,52 @@ Deno.serve(async (req) => {
       const { data: currentMatches } = await supabase.from("matches").select("*").eq("tournament_id", tournament_id).order("match_order");
       if (!currentMatches) return respond({ error: "Sin partidos" });
 
+      const groupMatches = currentMatches.filter((m: any) => m.group_name);
       const elimMatches = currentMatches.filter((m: any) => !m.group_name);
-      const unfinished = elimMatches.filter((m: any) => !m.winner_id);
-      if (unfinished.length > 0) return respond({ error: "Hay partidos sin resultado en la ronda actual" });
+      
+      let winners: string[] = [];
+      let nextRoundName = "";
 
-      const rounds = [...new Set(elimMatches.map((m: any) => m.round))];
-      const latestRound = rounds[rounds.length - 1];
-      const latestMatches = elimMatches.filter((m: any) => m.round === latestRound);
+      if (elimMatches.length === 0 && groupMatches.length > 0) {
+        // Transition from groups to elimination
+        const unfinishedGroups = groupMatches.filter((m: any) => !m.winner_id);
+        if (unfinishedGroups.length > 0) return respond({ error: "Hay partidos de grupo sin resultado" });
+        
+        // Calculate standings and take top 2 from each group
+        const groupNames = [...new Set(groupMatches.map((m: any) => m.group_name))];
+        for (const gName of groupNames) {
+          const gMatches = groupMatches.filter((m: any) => m.group_name === gName);
+          const pIds = [...new Set(gMatches.flatMap((m: any) => [m.player1_id, m.player2_id]))].filter(Boolean);
+          const stats = pIds.map(id => {
+            const matches = gMatches.filter((m: any) => m.player1_id === id || m.player2_id === id);
+            let points = 0;
+            matches.forEach((m: any) => {
+              if (m.winner_id === id) points += 2; else points += 1;
+            });
+            return { id, points };
+          }).sort((a, b) => b.points - a.points);
+          
+          // Take top 2
+          if (stats[0]) winners.push(stats[0].id);
+          if (stats[1]) winners.push(stats[1].id);
+        }
+        
+        const rn: Record<number, string> = { 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos", 32: "16vos" };
+        nextRoundName = rn[winners.length] || `Ronda de ${winners.length}`;
+      } else {
+        const unfinished = elimMatches.filter((m: any) => !m.winner_id);
+        if (unfinished.length > 0) return respond({ error: "Hay partidos sin resultado en la ronda actual" });
 
-      if (latestMatches.length <= 1) return respond({ error: "El torneo ya terminó" });
+        const rounds = [...new Set(elimMatches.map((m: any) => m.round))];
+        const latestRound = rounds[rounds.length - 1];
+        const latestMatches = elimMatches.filter((m: any) => m.round === latestRound);
 
-      const winners = latestMatches.map((m: any) => m.winner_id).filter(Boolean);
-      const rn: Record<number, string> = { 1: "Final", 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos" };
-      const nextRoundName = rn[winners.length] || `Ronda de ${winners.length}`;
+        if (latestMatches.length <= 1) return respond({ error: "El torneo ya terminó" });
+
+        winners = latestMatches.map((m: any) => m.winner_id).filter(Boolean);
+        const rn: Record<number, string> = { 1: "Final", 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos" };
+        nextRoundName = rn[winners.length] || `Ronda de ${winners.length}`;
+      }
 
       const nextMatches: any[] = [];
       for (let i = 0; i < winners.length; i += 2) {
