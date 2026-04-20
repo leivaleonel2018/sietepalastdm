@@ -13,12 +13,13 @@ const sizeMap = {
 };
 
 export default function PlayerAvatar({ name, avatarUrl, size = "sm", className = "" }: PlayerAvatarProps) {
-  const initials = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+  const safeName = name || "?";
+  const initials = safeName.split(" ").filter(Boolean).map(n => n[0] ?? "").join("").slice(0, 2).toUpperCase() || "?";
 
   return (
     <div className={`rounded-full bg-primary/10 flex items-center justify-center font-semibold text-primary overflow-hidden flex-shrink-0 ${sizeMap[size]} ${className}`}>
       {avatarUrl ? (
-        <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+        <img src={avatarUrl} alt={`Avatar de ${safeName}`} className="w-full h-full object-cover" />
       ) : (
         initials
       )}

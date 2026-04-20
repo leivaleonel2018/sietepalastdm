@@ -21,6 +21,11 @@ interface Player {
   avatar_url: string | null;
 }
 
+interface ProfileSetScore {
+  p1: number;
+  p2: number;
+}
+
 interface Match {
   id: string;
   tournament_id: string;
@@ -33,7 +38,7 @@ interface Match {
   group_name: string | null;
   rating_change_p1: number | null;
   rating_change_p2: number | null;
-  set_scores: any;
+  set_scores: ProfileSetScore[] | null;
   created_at: string;
 }
 
@@ -44,7 +49,7 @@ interface Challenge {
   challenger_id: string;
   challenged_id: string;
   status: string;
-  set_scores: any;
+  set_scores: ProfileSetScore[] | null;
   challenger_sets_won: number | null;
   challenged_sets_won: number | null;
   winner_id: string | null;
@@ -446,8 +451,8 @@ export default function PlayerProfile() {
               const ratingChange = isP1 ? m.rating_change_p1 : m.rating_change_p2;
               const myScore = isP1 ? m.player1_score : m.player2_score;
               const oppScore = isP1 ? m.player2_score : m.player1_score;
-              const setScores = m.set_scores as Array<{p1: number; p2: number}> | null;
-              const setDetail = setScores ? setScores.map(s => isP1 ? `${s.p1}-${s.p2}` : `${s.p2}-${s.p1}`).join(", ") : "";
+              const setScores = m.set_scores;
+              const setDetail = Array.isArray(setScores) ? setScores.map(s => isP1 ? `${s?.p1 ?? 0}-${s?.p2 ?? 0}` : `${s?.p2 ?? 0}-${s?.p1 ?? 0}`).join(", ") : "";
 
               return (
                 <div key={m.id} className="glass-card px-4 py-3 flex items-center justify-between">

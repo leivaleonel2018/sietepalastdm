@@ -22,6 +22,11 @@ interface Player {
   avatar_url: string | null;
 }
 
+interface SetScore {
+  p1: number;
+  p2: number;
+}
+
 interface RecentMatch {
   id: string;
   player1_id: string | null;
@@ -29,7 +34,7 @@ interface RecentMatch {
   player1_score: number | null;
   player2_score: number | null;
   winner_id: string | null;
-  set_scores: any;
+  set_scores: SetScore[] | null;
   created_at: string;
   round: string | null;
   tournament_id: string;
@@ -55,22 +60,24 @@ interface BracketMatch {
 
 const stripHtml = (str: string) => str.replace(/<[^>]*>/g, "").trim();
 
-// Count-up hook
+// Count-up hook — re-animates when target changes
 function useCountUp(target: number | null, duration = 1200) {
   const [value, setValue] = useState(0);
-  const hasAnimated = useRef(false);
+  const prevTarget = useRef<number | null>(null);
 
   useEffect(() => {
-    if (target === null || hasAnimated.current) return;
-    hasAnimated.current = true;
+    if (target === null || target === prevTarget.current) return;
+    prevTarget.current = target;
     const start = performance.now();
+    let rafId: number;
     const step = (now: number) => {
       const progress = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       setValue(Math.round(eased * target));
-      if (progress < 1) requestAnimationFrame(step);
+      if (progress < 1) rafId = requestAnimationFrame(step);
     };
-    requestAnimationFrame(step);
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
   }, [target, duration]);
 
   return target === null ? "–" : value;
@@ -151,6 +158,9 @@ export default function Index() {
   const [loadingNews, setLoadingNews] = useState(true);
   const [loadingRanking, setLoadingRanking] = useState(true);
   const [loadingMatches, setLoadingMatches] = useState(true);
+  const [errorNews, setErrorNews] = useState(false);
+  const [errorRanking, setErrorRanking] = useState(false);
+  const [errorMatches, setErrorMatches] = useState(false);
   const [totalPlayers, setTotalPlayers] = useState<number | null>(null);
   const [totalMatches, setTotalMatches] = useState<number | null>(null);
   const [activeTournament, setActiveTournament] = useState<ActiveTournament | null>(null);
@@ -159,70 +169,71 @@ export default function Index() {
   const animatedPlayers = useCountUp(totalPlayers);
   const animatedMatches = useCountUp(totalMatches);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [newsRes, topRes, matchesRes, playersCountRes, matchesCountRes, tournamentRes] = await Promise.all([
-          supabase.from("news").select("*").order("created_at", { ascending: false }).limit(6),
-          supabase.from("players").select("id, full_name, rating, avatar_url").order("rating", { ascending: false }).limit(5),
-          supabase.from("matches").select("*").order("created_at", { ascending: false }).limit(10),
-          supabase.from("players").select("*", { count: "exact", head: true }),
-          supabase.from("matches").select("*", { count: "exact", head: true }),
-          supabase.from("tournaments").select("id, name, format, status").in("status", ["in_progress", "group_stage", "knockout"]).order("created_at", { ascending: false }).limit(1),
-        ]);
+  const fetchData = useCallback(async () => {
+    // Reset errors
+    setErrorNews(false);
+    setErrorRanking(false);
+    setErrorMatches(false);
 
-        setNews((newsRes.data || []) as NewsItem[]);
-        setLoadingNews(false);
+    // Parallel fetch with individual error handling
+    const [newsRes, topRes, matchesRes, playersCountRes, matchesCountRes, tournamentRes] = await Promise.all([
+      supabase.from("news").select("*").order("created_at", { ascending: false }).limit(6).then(r => r, () => ({ data: null, error: true })),
+      supabase.from("players").select("id, full_name, rating, avatar_url").order("rating", { ascending: false }).limit(5).then(r => r, () => ({ data: null, error: true })),
+      supabase.from("matches").select("*").order("created_at", { ascending: false }).limit(10).then(r => r, () => ({ data: null, error: true })),
+      supabase.from("players").select("*", { count: "exact", head: true }).then(r => r, () => ({ data: null, count: null, error: true })),
+      supabase.from("matches").select("*", { count: "exact", head: true }).then(r => r, () => ({ data: null, count: null, error: true })),
+      supabase.from("tournaments").select("id, name, format, status").in("status", ["in_progress", "group_stage", "knockout"]).order("created_at", { ascending: false }).limit(1).then(r => r, () => ({ data: null, error: true })),
+    ]);
 
-        setTopPlayers((topRes.data || []) as Player[]);
-        setLoadingRanking(false);
+    // News
+    if (newsRes.error) { setErrorNews(true); } else { setNews((newsRes.data || []) as NewsItem[]); }
+    setLoadingNews(false);
 
-        setRecentMatches((matchesRes.data || []) as RecentMatch[]);
-        setTotalPlayers(playersCountRes.count ?? null);
-        setTotalMatches(matchesCountRes.count ?? null);
+    // Ranking
+    if (topRes.error) { setErrorRanking(true); } else { setTopPlayers((topRes.data || []) as Player[]); }
+    setLoadingRanking(false);
 
-        // Active tournament bracket
-        const at = (tournamentRes.data || [])[0] as ActiveTournament | undefined;
-        if (at) {
-          setActiveTournament(at);
-          const { data: bm } = await supabase
-            .from("matches")
-            .select("id, round, player1_id, player2_id, player1_score, player2_score, winner_id, match_order")
-            .eq("tournament_id", at.id)
-            .order("match_order", { ascending: true });
-          setBracketMatches((bm || []) as BracketMatch[]);
-        }
+    // Matches & counts
+    if (matchesRes.error) { setErrorMatches(true); } else { setRecentMatches((matchesRes.data || []) as RecentMatch[]); }
+    setTotalPlayers((playersCountRes as any).count ?? null);
+    setTotalMatches((matchesCountRes as any).count ?? null);
 
-        // Build players map for matches
-        const playerIds = new Set<string>();
-        (matchesRes.data || []).forEach((m: any) => {
-          if (m.player1_id) playerIds.add(m.player1_id);
-          if (m.player2_id) playerIds.add(m.player2_id);
-        });
-        // Also add bracket match player ids
-        if (at) {
-          ((await supabase.from("matches").select("player1_id, player2_id").eq("tournament_id", at.id)).data || []).forEach((m: any) => {
-            if (m.player1_id) playerIds.add(m.player1_id);
-            if (m.player2_id) playerIds.add(m.player2_id);
-          });
-        }
-        if (playerIds.size > 0) {
-          const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(playerIds));
-          const map: Record<string, Player> = {};
-          (pData || []).forEach((p: any) => { map[p.id] = p; });
-          setPlayersMap(map);
-        }
-        setLoadingMatches(false);
-      } catch (err) {
-        console.error("Error fetching index data:", err);
-      } finally {
-        setLoadingNews(false);
-        setLoadingRanking(false);
-        setLoadingMatches(false);
-      }
-    };
-    fetchAll();
+    // Active tournament bracket — single fetch reused for bracket + player IDs
+    let bracketData: BracketMatch[] = [];
+    const at = (tournamentRes.data || [])[0] as ActiveTournament | undefined;
+    if (at) {
+      setActiveTournament(at);
+      const { data: bm } = await supabase
+        .from("matches")
+        .select("id, round, player1_id, player2_id, player1_score, player2_score, winner_id, match_order")
+        .eq("tournament_id", at.id)
+        .order("match_order", { ascending: true });
+      bracketData = (bm || []) as BracketMatch[];
+      setBracketMatches(bracketData);
+    }
+
+    // Build players map — reuse bracketData instead of a redundant query
+    const playerIds = new Set<string>();
+    (matchesRes.data || []).forEach((m: any) => {
+      if (m.player1_id) playerIds.add(m.player1_id);
+      if (m.player2_id) playerIds.add(m.player2_id);
+    });
+    bracketData.forEach((m) => {
+      if (m.player1_id) playerIds.add(m.player1_id);
+      if (m.player2_id) playerIds.add(m.player2_id);
+    });
+    if (playerIds.size > 0) {
+      const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(playerIds));
+      const map: Record<string, Player> = {};
+      (pData || []).forEach((p: any) => { map[p.id] = p; });
+      setPlayersMap(map);
+    }
+    setLoadingMatches(false);
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // Detect hot streaks from recent matches
   const getStreak = useCallback((playerId: string): number => {
@@ -256,21 +267,27 @@ export default function Index() {
     .slice(0, 5)
     .map(m => {
       const winner = playersMap[m.winner_id!];
-      const loser = playersMap[m.winner_id === m.player1_id ? m.player2_id! : m.player1_id!];
+      const loserId = m.winner_id === m.player1_id ? m.player2_id! : m.player1_id!;
+      const loser = playersMap[loserId];
       const score = `${m.player1_score ?? 0}-${m.player2_score ?? 0}`;
-      const ago = formatDistanceToNow(new Date(m.created_at), { addSuffix: true, locale: es });
-      return `${winner?.full_name || "?"} venció a ${loser?.full_name || "?"} ${score} · ${ago}`;
+      let ago = "";
+      try { ago = formatDistanceToNow(new Date(m.created_at), { addSuffix: true, locale: es }); } catch { ago = ""; }
+      return `${winner?.full_name ?? "?"} venció a ${loser?.full_name ?? "?"} ${score}${ago ? " · " + ago : ""}`;
     });
 
-  const PlayerAvatar = ({ p, size = "w-8 h-8" }: { p: Player | undefined; size?: string }) => (
-    <div className={`${size} rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary overflow-hidden flex-shrink-0`}>
-      {p?.avatar_url ? (
-        <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
-      ) : (
-        (p?.full_name || "?").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
-      )}
-    </div>
-  );
+  const PlayerAvatar = ({ p, size = "w-8 h-8" }: { p: Player | undefined; size?: string }) => {
+    const name = p?.full_name || "?";
+    const initials = name.split(" ").filter(Boolean).map(n => n[0] ?? "").join("").slice(0, 2).toUpperCase() || "?";
+    return (
+      <div className={`${size} rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary overflow-hidden flex-shrink-0`}>
+        {p?.avatar_url ? (
+          <img src={p.avatar_url} alt={`Avatar de ${name}`} className="w-full h-full object-cover" />
+        ) : (
+          initials
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -409,6 +426,11 @@ export default function Index() {
                   ))}
                 </div>
               </div>
+            ) : errorRanking ? (
+              <div className="glass-card p-6 text-center">
+                <p className="text-sm text-destructive mb-2">No se pudo cargar el ranking</p>
+                <button onClick={fetchData} className="text-xs text-primary hover:underline">Reintentar</button>
+              </div>
             ) : topPlayers.length === 0 ? (
               <div className="glass-card p-6 text-center">
                 <p className="text-sm text-muted-foreground">Sin jugadores aún</p>
@@ -430,7 +452,7 @@ export default function Index() {
                         >
                           {isFirst && <Crown className="w-5 h-5 text-yellow-500 mb-1" />}
                           <PlayerAvatar p={p} size="w-14 h-14" />
-                          <span className="text-xs font-medium text-foreground mt-2 truncate w-full text-center">{p.full_name.split(" ")[0]}</span>
+                          <span className="text-xs font-medium text-foreground mt-2 truncate w-full text-center">{(p.full_name ?? "").split(" ")[0] || "?"}</span>
                           <span className="text-sm font-heading font-bold text-primary">{p.rating}</span>
                           {streak >= 3 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-600 flex items-center gap-0.5 mt-1">
@@ -495,6 +517,11 @@ export default function Index() {
                     </div>
                   ))}
                 </div>
+              ) : errorMatches ? (
+                <div className="p-6 text-center">
+                  <p className="text-sm text-destructive mb-2">No se pudieron cargar los partidos</p>
+                  <button onClick={fetchData} className="text-xs text-primary hover:underline">Reintentar</button>
+                </div>
               ) : recentMatches.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground text-center">Los resultados de los partidos aparecerán acá</p>
               ) : (
@@ -502,8 +529,8 @@ export default function Index() {
                   {recentMatches.slice(0, 5).map(m => {
                     const p1 = playersMap[m.player1_id || ""];
                     const p2 = playersMap[m.player2_id || ""];
-                    const setScores = m.set_scores as Array<{ p1: number; p2: number }> | null;
-                    const setDetail = setScores ? setScores.map(s => `${s.p1}-${s.p2}`).join(", ") : "";
+                    const setScores = m.set_scores;
+                    const setDetail = Array.isArray(setScores) ? setScores.map(s => `${s?.p1 ?? 0}-${s?.p2 ?? 0}`).join(", ") : "";
                     const p1Won = m.winner_id === m.player1_id;
                     const p2Won = m.winner_id === m.player2_id;
 
@@ -621,6 +648,12 @@ export default function Index() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : errorNews ? (
+            <div className="glass-card p-12 text-center">
+              <Newspaper className="w-10 h-10 text-destructive/40 mx-auto mb-3" />
+              <p className="text-sm text-destructive mb-2">No se pudieron cargar las noticias</p>
+              <button onClick={fetchData} className="text-xs text-primary hover:underline">Reintentar</button>
             </div>
           ) : news.length === 0 ? (
             <div className="glass-card p-12 text-center">
