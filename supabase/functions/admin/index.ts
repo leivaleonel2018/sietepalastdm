@@ -1,4 +1,8 @@
+// @ts-ignore - Supabase edge functions use Deno, which causes local TS warnings
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+// @ts-ignore
+declare const Deno: any;
+
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-token" };
 
 const ADMIN_TOKEN = "admin_token";
@@ -37,17 +41,28 @@ const PLACEMENT_POINTS: Record<string, number> = {
 
 async function checkAndAwardBadges(supabase: any, playerId: string) {
   const badgeDefs = [
+    // Partidos Jugados
     { name: "Iniciación", icon_url: "🔰", description: "1 partido jugado", type: "automatic" },
-    { name: "Bautismo de Fuego", icon_url: "🔥", description: "Primera victoria", type: "automatic" },
-    { name: "Competidor", icon_url: "🏅", description: "Primer torneo", type: "automatic" },
     { name: "Tenacidad", icon_url: "🛡️", description: "10 partidos jugados", type: "automatic" },
     { name: "Veterano", icon_url: "🎖️", description: "50 partidos jugados", type: "automatic" },
     { name: "Leyenda Local", icon_url: "👑", description: "100 partidos jugados", type: "automatic" },
+    { name: "Titán del Club", icon_url: "🏔️", description: "200 partidos jugados", type: "automatic" },
+    { name: "Dios del Tenis", icon_url: "🌌", description: "500 partidos jugados", type: "automatic" },
+    // Victorias Totales
+    { name: "Bautismo de Fuego", icon_url: "🔥", description: "Primera victoria", type: "automatic" },
+    { name: "Guerrero", icon_url: "⚔️", description: "10 victorias", type: "automatic" },
+    { name: "Maestro", icon_url: "🧠", description: "50 victorias", type: "automatic" },
+    { name: "Gran Maestro", icon_url: "💎", description: "100 victorias", type: "automatic" },
+    { name: "Emperador", icon_url: "🏰", description: "200 victorias", type: "automatic" },
+    // Rachas
     { name: "Racha Imparable", icon_url: "⚡", description: "3 victorias seguidas", type: "automatic" },
     { name: "Invicto", icon_url: "🔱", description: "5 victorias seguidas", type: "automatic" },
-    { name: "Guerrero", icon_url: "⚔️", description: "10 victorias totales", type: "automatic" },
-    { name: "Maestro", icon_url: "🧠", description: "50 victorias totales", type: "automatic" },
-    { name: "Gran Maestro", icon_url: "💎", description: "100 victorias totales", type: "automatic" },
+    { name: "Intocable", icon_url: "🛡️", description: "10 victorias seguidas", type: "automatic" },
+    { name: "Dios de la Racha", icon_url: "☄️", description: "20 victorias seguidas", type: "automatic" },
+    // Torneos
+    { name: "Competidor", icon_url: "🏅", description: "Primer torneo jugado", type: "automatic" },
+    { name: "Multitudinario", icon_url: "🏟️", description: "10 torneos jugados", type: "automatic" },
+    { name: "Adicto a la Arena", icon_url: "🌋", description: "25 torneos jugados", type: "automatic" },
   ];
 
   // Auto-create missing automatic badges
@@ -75,8 +90,8 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
 
   const { count: tournamentCount } = await supabase.from("tournament_registrations").select("id", { count: "exact", head: true }).eq("player_id", playerId);
 
-  const { data: recentMatches } = await supabase.from("matches").select("winner_id, created_at").or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`).order("created_at", { ascending: false }).limit(5);
-  const { data: recentChallenges } = await supabase.from("challenges").select("winner_id, created_at").or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed").order("created_at", { ascending: false }).limit(5);
+  const { data: recentMatches } = await supabase.from("matches").select("winner_id, created_at").or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`).order("created_at", { ascending: false }).limit(25);
+  const { data: recentChallenges } = await supabase.from("challenges").select("winner_id, created_at").or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed").order("created_at", { ascending: false }).limit(25);
   const allRecent = [...(recentMatches || []), ...(recentChallenges || [])].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
   
   let streak = 0;
@@ -85,17 +100,31 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   const toAward: string[] = [];
   const awardIfMissing = (name: string, cond: boolean) => { if (cond && !hasBadge(name)) { const id = getBadgeId(name); if (id) toAward.push(id); } };
 
+  // Partidos Jugados
   awardIfMissing("Iniciación", totalPlayed >= 1);
-  awardIfMissing("Bautismo de Fuego", totalWins >= 1);
-  awardIfMissing("Competidor", (tournamentCount || 0) >= 1);
   awardIfMissing("Tenacidad", totalPlayed >= 10);
   awardIfMissing("Veterano", totalPlayed >= 50);
   awardIfMissing("Leyenda Local", totalPlayed >= 100);
-  awardIfMissing("Racha Imparable", streak >= 3);
-  awardIfMissing("Invicto", streak >= 5);
+  awardIfMissing("Titán del Club", totalPlayed >= 200);
+  awardIfMissing("Dios del Tenis", totalPlayed >= 500);
+
+  // Victorias Totales
+  awardIfMissing("Bautismo de Fuego", totalWins >= 1);
   awardIfMissing("Guerrero", totalWins >= 10);
   awardIfMissing("Maestro", totalWins >= 50);
   awardIfMissing("Gran Maestro", totalWins >= 100);
+  awardIfMissing("Emperador", totalWins >= 200);
+
+  // Rachas
+  awardIfMissing("Racha Imparable", streak >= 3);
+  awardIfMissing("Invicto", streak >= 5);
+  awardIfMissing("Intocable", streak >= 10);
+  awardIfMissing("Dios de la Racha", streak >= 20);
+
+  // Torneos
+  awardIfMissing("Competidor", (tournamentCount || 0) >= 1);
+  awardIfMissing("Multitudinario", (tournamentCount || 0) >= 10);
+  awardIfMissing("Adicto a la Arena", (tournamentCount || 0) >= 25);
 
   if (toAward.length > 0) {
     await supabase.from("player_badges").insert(toAward.map(badge_id => ({ player_id: playerId, badge_id })));
@@ -113,7 +142,7 @@ function getPlacementFromRound(round: string, isWinner: boolean, totalRounds: nu
   return null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (!checkAdmin(req)) return respond({ error: "No autorizado" }, 401);
 
@@ -377,7 +406,7 @@ Deno.serve(async (req) => {
         const groupNames = [...new Set(groupMatches.map((m: any) => m.group_name))];
         for (const gName of groupNames) {
           const gMatches = groupMatches.filter((m: any) => m.group_name === gName);
-          const pIds = [...new Set(gMatches.flatMap((m: any) => [m.player1_id, m.player2_id]))].filter(Boolean);
+          const pIds = [...new Set(gMatches.flatMap((m: any) => [m.player1_id, m.player2_id]))].filter(Boolean) as string[];
           const stats = pIds.map(id => {
             const matches = gMatches.filter((m: any) => m.player1_id === id || m.player2_id === id);
             let points = 0;
@@ -449,6 +478,53 @@ Deno.serve(async (req) => {
     }
 
     // Badge management
+    if (action === "sync_badges") {
+      const badgeDefs = [
+        // Partidos Jugados
+        { name: "Iniciación", icon_url: "🔰", description: "1 partido jugado", type: "automatic" },
+        { name: "Tenacidad", icon_url: "🛡️", description: "10 partidos jugados", type: "automatic" },
+        { name: "Veterano", icon_url: "🎖️", description: "50 partidos jugados", type: "automatic" },
+        { name: "Leyenda Local", icon_url: "👑", description: "100 partidos jugados", type: "automatic" },
+        { name: "Titán del Club", icon_url: "🏔️", description: "200 partidos jugados", type: "automatic" },
+        { name: "Dios del Tenis", icon_url: "🌌", description: "500 partidos jugados", type: "automatic" },
+        // Victorias Totales
+        { name: "Bautismo de Fuego", icon_url: "🔥", description: "Primera victoria", type: "automatic" },
+        { name: "Guerrero", icon_url: "⚔️", description: "10 victorias", type: "automatic" },
+        { name: "Maestro", icon_url: "🧠", description: "50 victorias", type: "automatic" },
+        { name: "Gran Maestro", icon_url: "💎", description: "100 victorias", type: "automatic" },
+        { name: "Emperador", icon_url: "🏰", description: "200 victorias", type: "automatic" },
+        // Rachas
+        { name: "Racha Imparable", icon_url: "⚡", description: "3 victorias seguidas", type: "automatic" },
+        { name: "Invicto", icon_url: "🔱", description: "5 victorias seguidas", type: "automatic" },
+        { name: "Intocable", icon_url: "🛡️", description: "10 victorias seguidas", type: "automatic" },
+        { name: "Dios de la Racha", icon_url: "☄️", description: "20 victorias seguidas", type: "automatic" },
+        // Torneos
+        { name: "Competidor", icon_url: "🏅", description: "Primer torneo jugado", type: "automatic" },
+        { name: "Multitudinario", icon_url: "🏟️", description: "10 torneos jugados", type: "automatic" },
+        { name: "Adicto a la Arena", icon_url: "🌋", description: "25 torneos jugados", type: "automatic" },
+      ];
+
+      let addedCount = 0;
+      for (const b of badgeDefs) {
+        const { data } = await supabase.from("badges").select("id").eq("name", b.name).single();
+        if (!data) {
+          await supabase.from("badges").insert(b);
+          addedCount++;
+        }
+      }
+      return respond({ success: true, addedCount });
+    }
+
+    if (action === "recalculate_badges") {
+      const { data: players } = await supabase.from("players").select("id");
+      if (players) {
+        for (const p of players) {
+          await checkAndAwardBadges(supabase, p.id);
+        }
+      }
+      return respond({ success: true, count: players?.length || 0 });
+    }
+
     if (action === "create_badge") {
       const { name, description, icon_url, type } = data;
       if (!name) return respond({ error: "Nombre requerido" });
@@ -476,6 +552,43 @@ Deno.serve(async (req) => {
       const { player_id, badge_id } = data;
       const { error } = await supabase.from("player_badges").delete().eq("player_id", player_id).eq("badge_id", badge_id);
       if (error) throw error;
+      return respond({ success: true });
+    }
+
+    if (action === "admin_change_password") {
+      const { player_id, new_password } = data;
+      if (!player_id || !new_password) return respond({ error: "Faltan datos" });
+      const { error } = await supabase.auth.admin.updateUserById(player_id as string, { password: new_password as string });
+      if (error) throw error;
+      return respond({ success: true });
+    }
+
+    if (action === "admin_edit_player") {
+      const { player_id, full_name } = data;
+      if (!player_id || !full_name) return respond({ error: "Faltan datos" });
+      const { error } = await supabase.from("players").update({ full_name }).eq("id", player_id);
+      if (error) throw error;
+      return respond({ success: true });
+    }
+
+    if (action === "admin_remove_avatar") {
+      const { player_id } = data;
+      if (!player_id) return respond({ error: "Faltan datos" });
+      const { error } = await supabase.from("players").update({ avatar_url: null }).eq("id", player_id);
+      if (error) throw error;
+      return respond({ success: true });
+    }
+
+    if (action === "admin_delete_match") {
+      const { match_id, type } = data; // type: "match" or "challenge"
+      if (!match_id) return respond({ error: "ID requerido" });
+      if (type === "challenge") {
+        const { error } = await supabase.from("challenges").delete().eq("id", match_id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("matches").delete().eq("id", match_id);
+        if (error) throw error;
+      }
       return respond({ success: true });
     }
 

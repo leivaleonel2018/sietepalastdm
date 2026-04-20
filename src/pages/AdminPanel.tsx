@@ -13,7 +13,7 @@ import { Plus, Trash2, CheckCircle, Award, Zap, LogIn, Newspaper, Image, Trophy,
 import AnimatedList from "@/components/AnimatedList";
 
 interface Tournament { id: string; name: string; format: string; type: string; status: string; max_players: number | null; groups_count: number | null; created_at: string; }
-interface Player { id: string; full_name: string; rating: number; }
+interface Player { id: string; full_name: string; rating: number; avatar_url?: string | null; }
 interface NewsItem { id: string; title: string; content: string; image_url: string | null; created_at: string; }
 interface Badge { id: string; name: string; description: string | null; icon_url: string | null; type: string; }
 
@@ -39,16 +39,23 @@ export default function AdminPanel() {
   const [awardForm, setAwardForm] = useState({ player_id: "", badge_id: "" });
   const [editRatingForm, setEditRatingForm] = useState({ player_id: "", rating: "" });
   const [challengeForm, setChallengeForm] = useState({ challenger_id: "", challenged_id: "" });
+  
+  const [editPlayerForm, setEditPlayerForm] = useState({ player_id: "", full_name: "" });
+  const [passwordForm, setPasswordForm] = useState({ player_id: "", new_password: "" });
+  const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
+  const [challengeResultForm, setChallengeResultForm] = useState({ challenge_id: "", p1_score: "", p2_score: "" });
+  const [deleteMatchForm, setDeleteMatchForm] = useState({ match_id: "", type: "match" });
 
   useEffect(() => { if (isAdmin) fetchAll(); }, [isAdmin]);
 
   const fetchAll = async () => {
-    const [t, p, r, n, b] = await Promise.all([
+    const [t, p, r, n, b, c] = await Promise.all([
       supabase.from("tournaments").select("*").order("created_at", { ascending: false }),
-      supabase.from("players").select("id, full_name, rating").order("full_name"),
+      supabase.from("players").select("id, full_name, rating, avatar_url").order("full_name"),
       supabase.from("tournament_registrations").select("tournament_id, player_id"),
       supabase.from("news").select("*").order("created_at", { ascending: false }),
       supabase.from("badges").select("*").order("created_at"),
+      supabase.from("challenges").select("id, challenger_id, challenged_id").eq("status", "accepted"),
     ]);
     setTournaments(t.data || []);
     setPlayers(p.data || []);
@@ -57,6 +64,7 @@ export default function AdminPanel() {
     setRegistrations(regsMap);
     setNews((n.data || []) as NewsItem[]);
     setBadges((b.data || []) as Badge[]);
+    setActiveChallenges(c.data || []);
   };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -113,6 +121,58 @@ export default function AdminPanel() {
     if (data.error) { toast.error(data.error); return; }
     toast.success("Desafío creado como Aceptado");
     setChallengeForm({ challenger_id: "", challenged_id: "" });
+    fetchAll();
+  };
+
+  const handleEditPlayer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    const data = await adminAction("admin_edit_player", { player_id: editPlayerForm.player_id, full_name: editPlayerForm.full_name }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Nombre actualizado");
+    setEditPlayerForm({ player_id: "", full_name: "" });
+    fetchAll();
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    if (passwordForm.new_password.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
+    const data = await adminAction("admin_change_password", { player_id: passwordForm.player_id, new_password: passwordForm.new_password }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Contraseña actualizada");
+    setPasswordForm({ player_id: "", new_password: "" });
+  };
+
+  const removeAvatar = async (playerId: string) => {
+    if (!adminToken || !confirm("¿Eliminar foto de perfil?")) return;
+    const data = await adminAction("admin_remove_avatar", { player_id: playerId }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Foto eliminada");
+    fetchAll();
+  };
+
+  const submitChallengeResult = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken) return;
+    const p1 = parseInt(challengeResultForm.p1_score);
+    const p2 = parseInt(challengeResultForm.p2_score);
+    if (isNaN(p1) || isNaN(p2) || p1 === p2) { toast.error("Puntuación inválida"); return; }
+    const set_scores = [{ p1, p2 }];
+    const data = await adminAction("admin_record_challenge_result", { challenge_id: challengeResultForm.challenge_id, set_scores }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Resultado guardado");
+    setChallengeResultForm({ challenge_id: "", p1_score: "", p2_score: "" });
+    fetchAll();
+  };
+
+  const deleteMatchOrChallenge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToken || !confirm("¿Eliminar este partido del historial? Los puntos NO se revertirán automáticamente.")) return;
+    const data = await adminAction("admin_delete_match", { match_id: deleteMatchForm.match_id, type: deleteMatchForm.type }, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success("Partido eliminado del historial");
+    setDeleteMatchForm({ match_id: "", type: "match" });
   };
 
   const publishNews = async (e: React.FormEvent) => {
@@ -147,6 +207,21 @@ export default function AdminPanel() {
     toast.success("Insignia creada");
     setBadgeForm({ name: "", description: "", icon_url: "", type: "manual" });
     fetchAll();
+  };
+
+  const syncBadges = async () => {
+    if (!adminToken) return;
+    const data = await adminAction("sync_badges", {}, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success(`Insignias sincronizadas. Agregadas: ${data.addedCount || 0}`);
+    fetchAll();
+  };
+
+  const recalculateBadges = async () => {
+    if (!adminToken) return;
+    const data = await adminAction("recalculate_badges", {}, adminToken);
+    if (data.error) { toast.error(data.error); return; }
+    toast.success(`Insignias re-evaluadas para ${data.count || 0} jugadores`);
   };
 
   const deleteBadge = async (badgeId: string) => { if (!adminToken || !confirm("¿Eliminar insignia?")) return; await adminAction("delete_badge", { badge_id: badgeId }, adminToken); toast.success("Insignia eliminada"); fetchAll(); };
@@ -362,6 +437,11 @@ export default function AdminPanel() {
                     <span className="text-foreground font-medium">{p.full_name}</span>
                     <div className="flex items-center gap-3">
                       <span className="text-muted-foreground font-heading font-semibold">{p.rating}</span>
+                      {p.avatar_url && (
+                        <button onClick={() => removeAvatar(p.id)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar foto">
+                          <Image className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button onClick={() => deletePlayer(p.id, p.full_name)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Eliminar">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -374,42 +454,96 @@ export default function AdminPanel() {
             
             <div className="space-y-4">
               <div className="glass-card p-5">
-                <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Award className="w-4 h-4" /> Editar Rating Manual</h2>
-                <form onSubmit={editPlayerRating} className="space-y-2.5">
-                  <div><Label className="text-xs">Jugador</Label>
+                <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Users className="w-4 h-4" /> Modificar Jugador</h2>
+                <div className="space-y-3">
+                  {/* Rating */}
+                  <form onSubmit={editPlayerRating} className="flex gap-2">
                     <Select value={editRatingForm.player_id} onValueChange={v => {
                       const p = players.find(x => x.id === v);
                       setEditRatingForm({ player_id: v, rating: p ? p.rating.toString() : "" });
                     }}>
-                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectTrigger className="w-1/2 text-xs"><SelectValue placeholder="Jugador" /></SelectTrigger>
                       <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
                     </Select>
-                  </div>
-                  <div><Label className="text-xs">Nuevo Rating</Label>
-                    <Input type="number" value={editRatingForm.rating} onChange={e => setEditRatingForm(p => ({...p, rating: e.target.value}))} required />
-                  </div>
-                  <Button type="submit" className="w-full" variant="outline" disabled={!editRatingForm.player_id || !editRatingForm.rating}>Actualizar Rating</Button>
-                </form>
+                    <Input type="number" className="w-1/4 text-xs" value={editRatingForm.rating} onChange={e => setEditRatingForm(p => ({...p, rating: e.target.value}))} placeholder="Rating" required />
+                    <Button type="submit" className="flex-1 text-xs px-2" variant="outline" disabled={!editRatingForm.player_id || !editRatingForm.rating}>Rating</Button>
+                  </form>
+                  {/* Name */}
+                  <form onSubmit={handleEditPlayer} className="flex gap-2">
+                    <Select value={editPlayerForm.player_id} onValueChange={v => {
+                      const p = players.find(x => x.id === v);
+                      setEditPlayerForm({ player_id: v, full_name: p ? p.full_name : "" });
+                    }}>
+                      <SelectTrigger className="w-1/2 text-xs"><SelectValue placeholder="Jugador" /></SelectTrigger>
+                      <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
+                    </Select>
+                    <Input className="w-1/4 text-xs" value={editPlayerForm.full_name} onChange={e => setEditPlayerForm(p => ({...p, full_name: e.target.value}))} placeholder="Nombre" required />
+                    <Button type="submit" className="flex-1 text-xs px-2" variant="outline" disabled={!editPlayerForm.player_id || !editPlayerForm.full_name}>Nombre</Button>
+                  </form>
+                  {/* Password */}
+                  <form onSubmit={handleChangePassword} className="flex gap-2">
+                    <Select value={passwordForm.player_id} onValueChange={v => setPasswordForm(p => ({...p, player_id: v}))}>
+                      <SelectTrigger className="w-1/2 text-xs"><SelectValue placeholder="Jugador" /></SelectTrigger>
+                      <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
+                    </Select>
+                    <Input type="text" className="w-1/4 text-xs" value={passwordForm.new_password} onChange={e => setPasswordForm(p => ({...p, new_password: e.target.value}))} placeholder="Contraseña" required />
+                    <Button type="submit" className="flex-1 text-xs px-2" variant="outline" disabled={!passwordForm.player_id || !passwordForm.new_password}>Clave</Button>
+                  </form>
+                </div>
               </div>
 
               <div className="glass-card p-5">
-                <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Swords className="w-4 h-4" /> Crear Desafío</h2>
-                <form onSubmit={adminCreateChallenge} className="space-y-2.5">
-                  <div><Label className="text-xs">Jugador 1</Label>
+                <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Swords className="w-4 h-4" /> Desafíos y Partidos</h2>
+                <div className="space-y-4">
+                  {/* Force challenge */}
+                  <form onSubmit={adminCreateChallenge} className="flex gap-2">
                     <Select value={challengeForm.challenger_id} onValueChange={v => setChallengeForm(p => ({...p, challenger_id: v}))}>
-                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectTrigger className="w-2/5 text-xs"><SelectValue placeholder="Retador" /></SelectTrigger>
                       <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
                     </Select>
-                  </div>
-                  <div><Label className="text-xs">Jugador 2</Label>
                     <Select value={challengeForm.challenged_id} onValueChange={v => setChallengeForm(p => ({...p, challenged_id: v}))}>
-                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectTrigger className="w-2/5 text-xs"><SelectValue placeholder="Retado" /></SelectTrigger>
                       <SelectContent>{players.map(p => (<SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>))}</SelectContent>
                     </Select>
-                  </div>
-                  <Button type="submit" className="w-full" variant="outline" disabled={!challengeForm.challenger_id || !challengeForm.challenged_id}>Forzar Desafío</Button>
-                  <p className="text-[10px] text-muted-foreground text-center mt-1">Ir a la pestaña de Desafíos en la app para registrar el resultado.</p>
-                </form>
+                    <Button type="submit" className="flex-1 text-xs px-2" variant="outline" disabled={!challengeForm.challenger_id || !challengeForm.challenged_id}>Forzar</Button>
+                  </form>
+
+                  {/* Resolve Challenge */}
+                  {activeChallenges.length > 0 && (
+                    <form onSubmit={submitChallengeResult} className="flex flex-col gap-2 p-3 bg-muted/30 rounded-lg">
+                      <Label className="text-xs font-semibold">Cargar Resultado de Desafío</Label>
+                      <Select value={challengeResultForm.challenge_id} onValueChange={v => setChallengeResultForm(p => ({...p, challenge_id: v}))}>
+                        <SelectTrigger className="text-xs"><SelectValue placeholder="Seleccionar Desafío" /></SelectTrigger>
+                        <SelectContent>
+                          {activeChallenges.map(c => {
+                            const p1 = players.find(x => x.id === c.challenger_id);
+                            const p2 = players.find(x => x.id === c.challenged_id);
+                            return <SelectItem key={c.id} value={c.id}>{p1?.full_name} vs {p2?.full_name}</SelectItem>
+                          })}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2 items-center">
+                        <Input type="number" className="text-xs" value={challengeResultForm.p1_score} onChange={e => setChallengeResultForm(p => ({...p, p1_score: e.target.value}))} placeholder="Sets J1" required />
+                        <span className="text-xs text-muted-foreground">-</span>
+                        <Input type="number" className="text-xs" value={challengeResultForm.p2_score} onChange={e => setChallengeResultForm(p => ({...p, p2_score: e.target.value}))} placeholder="Sets J2" required />
+                        <Button type="submit" className="text-xs" variant="outline" disabled={!challengeResultForm.challenge_id}>Guardar</Button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Delete match */}
+                  <form onSubmit={deleteMatchOrChallenge} className="flex flex-col gap-2 p-3 border border-destructive/20 rounded-lg bg-destructive/5">
+                    <Label className="text-xs font-semibold text-destructive">Eliminar del Historial</Label>
+                    <div className="flex gap-2">
+                      <Select value={deleteMatchForm.type} onValueChange={v => setDeleteMatchForm(p => ({...p, type: v}))}>
+                        <SelectTrigger className="w-1/3 text-xs border-destructive/30"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="match">Torneo</SelectItem><SelectItem value="challenge">Desafío</SelectItem></SelectContent>
+                      </Select>
+                      <Input className="flex-1 text-xs border-destructive/30" value={deleteMatchForm.match_id} onChange={e => setDeleteMatchForm(p => ({...p, match_id: e.target.value}))} placeholder="ID del Partido" required />
+                      <Button type="submit" className="text-xs text-destructive hover:bg-destructive hover:text-white border-destructive/30" variant="outline" disabled={!deleteMatchForm.match_id}>Eliminar</Button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
           </div>
@@ -435,7 +569,13 @@ export default function AdminPanel() {
             </div>
 
             <div className="glass-card p-5">
-              <h2 className="font-heading font-semibold text-sm text-foreground mb-3">Insignias existentes</h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-heading font-semibold text-sm text-foreground">Insignias existentes</h2>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={syncBadges} className="text-xs h-7 px-2" title="Crear insignias nuevas en la base de datos">Sincronizar DB</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={recalculateBadges} className="text-xs h-7 px-2" title="Re-evaluar y otorgar insignias a todos los jugadores">Asignar a Jugadores</Button>
+                </div>
+              </div>
               <div className="space-y-1.5 max-h-64 overflow-y-auto mb-4">
                 {badges.map(b => (
                   <div key={b.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/30 text-sm">

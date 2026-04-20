@@ -165,15 +165,17 @@ export default function Index() {
   const [totalMatches, setTotalMatches] = useState<number | null>(null);
   const [activeTournament, setActiveTournament] = useState<ActiveTournament | null>(null);
   const [bracketMatches, setBracketMatches] = useState<BracketMatch[]>([]);
+  const [playerStreaks, setPlayerStreaks] = useState<Record<string, number>>({});
 
   const animatedPlayers = useCountUp(totalPlayers);
   const animatedMatches = useCountUp(totalMatches);
 
   const fetchData = useCallback(async () => {
-    // Reset errors
+    // Reset errors & stale data
     setErrorNews(false);
     setErrorRanking(false);
     setErrorMatches(false);
+    setPlayersMap({});
 
     // Parallel fetch with individual error handling
     const [newsRes, topRes, matchesRes, playersCountRes, matchesCountRes, tournamentRes] = await Promise.all([
@@ -189,62 +191,102 @@ export default function Index() {
     if (newsRes.error) { setErrorNews(true); } else { setNews((newsRes.data || []) as NewsItem[]); }
     setLoadingNews(false);
 
-    // Ranking
-    if (topRes.error) { setErrorRanking(true); } else { setTopPlayers((topRes.data || []) as Player[]); }
-    setLoadingRanking(false);
+    // Ranking & Streaks
+    if (topRes.error) { 
+      setErrorRanking(true); 
+      setLoadingRanking(false); 
+    } else { 
+      const topList = (topRes.data || []) as Player[];
+      setTopPlayers(topList); 
+      setLoadingRanking(false);
+      
+      if (topList.length > 0) {
+        const topIds = topList.map(p => p.id);
+        const { data: streakMatches } = await supabase
+          .from("matches")
+          .select("player1_id, player2_id, winner_id")
+          .not("winner_id", "is", null)
+          .or(`player1_id.in.(${topIds.join(',')}),player2_id.in.(${topIds.join(',')})`)
+          .order("created_at", { ascending: false })
+          .limit(50);
+          
+        if (streakMatches) {
+          const streakMap: Record<string, number> = {};
+          topIds.forEach(id => {
+            let streak = 0;
+            for (const m of streakMatches) {
+              if (m.player1_id !== id && m.player2_id !== id) continue;
+              if (m.winner_id === id) streak++;
+              else break;
+            }
+            streakMap[id] = streak;
+          });
+          setPlayerStreaks(streakMap);
+        }
+      }
+    }
 
     // Matches & counts
-    if (matchesRes.error) { setErrorMatches(true); } else { setRecentMatches((matchesRes.data || []) as RecentMatch[]); }
+    const recentData = (matchesRes.data || []) as RecentMatch[];
+    if (matchesRes.error) { setErrorMatches(true); } else { setRecentMatches(recentData); }
     setTotalPlayers((playersCountRes as any).count ?? null);
     setTotalMatches((matchesCountRes as any).count ?? null);
 
-    // Active tournament bracket — single fetch reused for bracket + player IDs
-    let bracketData: BracketMatch[] = [];
+    // Initial players map for recent matches BEFORE tournament bracket
+    const initialPlayerIds = new Set<string>();
+    recentData.forEach((m) => {
+      if (m.player1_id) initialPlayerIds.add(m.player1_id);
+      if (m.player2_id) initialPlayerIds.add(m.player2_id);
+    });
+    
+    if (initialPlayerIds.size > 0) {
+      const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(initialPlayerIds));
+      if (pData) {
+        const map: Record<string, Player> = {};
+        pData.forEach((p: any) => { map[p.id] = p; });
+        setPlayersMap(map);
+      }
+    }
+    setLoadingMatches(false);
+
+    // Active tournament bracket — fetch without blocking recent matches
     const at = (tournamentRes.data || [])[0] as ActiveTournament | undefined;
-    if (at) {
+    if (at && !tournamentRes.error) {
       setActiveTournament(at);
       const { data: bm } = await supabase
         .from("matches")
         .select("id, round, player1_id, player2_id, player1_score, player2_score, winner_id, match_order")
         .eq("tournament_id", at.id)
         .order("match_order", { ascending: true });
-      bracketData = (bm || []) as BracketMatch[];
+        
+      const bracketData = (bm || []) as BracketMatch[];
       setBracketMatches(bracketData);
+      
+      const bracketPlayerIds = new Set<string>();
+      bracketData.forEach((m) => {
+        if (m.player1_id && !initialPlayerIds.has(m.player1_id)) bracketPlayerIds.add(m.player1_id);
+        if (m.player2_id && !initialPlayerIds.has(m.player2_id)) bracketPlayerIds.add(m.player2_id);
+      });
+      
+      if (bracketPlayerIds.size > 0) {
+        const { data: bpData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(bracketPlayerIds));
+        if (bpData) {
+          setPlayersMap(prev => {
+            const newMap = { ...prev };
+            bpData.forEach((p: any) => { newMap[p.id] = p; });
+            return newMap;
+          });
+        }
+      }
+    } else {
+      setActiveTournament(null);
+      setBracketMatches([]);
     }
-
-    // Build players map — reuse bracketData instead of a redundant query
-    const playerIds = new Set<string>();
-    (matchesRes.data || []).forEach((m: any) => {
-      if (m.player1_id) playerIds.add(m.player1_id);
-      if (m.player2_id) playerIds.add(m.player2_id);
-    });
-    bracketData.forEach((m) => {
-      if (m.player1_id) playerIds.add(m.player1_id);
-      if (m.player2_id) playerIds.add(m.player2_id);
-    });
-    if (playerIds.size > 0) {
-      const { data: pData } = await supabase.from("players").select("id, full_name, rating, avatar_url").in("id", Array.from(playerIds));
-      const map: Record<string, Player> = {};
-      (pData || []).forEach((p: any) => { map[p.id] = p; });
-      setPlayersMap(map);
-    }
-    setLoadingMatches(false);
   }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Detect hot streaks from recent matches
-  const getStreak = useCallback((playerId: string): number => {
-    let streak = 0;
-    for (const m of recentMatches) {
-      if (m.player1_id !== playerId && m.player2_id !== playerId) continue;
-      if (m.winner_id === playerId) streak++;
-      else break;
-    }
-    return streak;
-  }, [recentMatches]);
 
   // Group bracket matches by round
   const bracketRounds = bracketMatches.reduce<Record<string, BracketMatch[]>>((acc, m) => {
@@ -439,19 +481,19 @@ export default function Index() {
               <>
                 {/* Podium – Top 3 */}
                 {topPlayers.length >= 3 && (
-                  <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="grid grid-cols-3 gap-2 mb-3 items-end">
                     {[1, 0, 2].map(idx => {
                       const p = topPlayers[idx];
-                      const streak = getStreak(p.id);
+                      const streak = playerStreaks[p.id] || 0;
                       const isFirst = idx === 0;
                       return (
                         <Link
                           key={p.id}
                           to={`/jugador/${p.id}`}
-                          className={`glass-card flex flex-col items-center py-4 px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "border-yellow-500/30 bg-yellow-500/5 -mt-3" : idx === 1 ? "" : ""}`}
+                          className={`glass-card flex flex-col items-center px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "py-6 border-yellow-500/30 bg-yellow-500/5 shadow-md z-10" : idx === 1 ? "py-4" : "py-3"}`}
                         >
                           {isFirst && <Crown className="w-5 h-5 text-yellow-500 mb-1" />}
-                          <PlayerAvatar p={p} size="w-14 h-14" />
+                          <PlayerAvatar p={p} size={isFirst ? "w-16 h-16" : "w-12 h-12"} />
                           <span className="text-xs font-medium text-foreground mt-2 truncate w-full text-center">{(p.full_name ?? "").split(" ")[0] || "?"}</span>
                           <span className="text-sm font-heading font-bold text-primary">{p.rating}</span>
                           {streak >= 3 && (
@@ -471,7 +513,7 @@ export default function Index() {
                   <div className="glass-card overflow-hidden">
                     <div className="divide-y divide-border/50">
                       {topPlayers.slice(3).map((p, i) => {
-                        const streak = getStreak(p.id);
+                        const streak = playerStreaks[p.id] || 0;
                         return (
                           <Link key={p.id} to={`/jugador/${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
                             <span className="w-8 text-sm font-medium text-muted-foreground">{i + 4}°</span>
