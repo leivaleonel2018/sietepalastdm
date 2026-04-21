@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { authAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import { ArrowLeft, TrendingUp, TrendingDown, Trophy, Lock, Swords, Camera, Award, Star, Shield, Flame, Crown, Zap, Target, Share2, Activity, Medal as MedalIcon } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, Trophy, Lock, Swords, Camera, Award, Star, Shield, Flame, Crown, Zap, Target, Share2, Activity, Medal as MedalIcon, Edit3, Save, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,15 @@ import { toast } from "sonner";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip } from "recharts";
 import html2canvas from "html2canvas";
-import { useRef } from "react";
+
+interface PlayerAttributes {
+  attack: number;
+  defense: number;
+  serve: number;
+  control: number;
+  speed: number;
+  mental: number;
+}
 
 interface Player {
   id: string;
@@ -23,6 +31,7 @@ interface Player {
   rating: number;
   created_at: string;
   avatar_url: string | null;
+  attributes?: PlayerAttributes | null;
 }
 
 interface ProfileSetScore {
@@ -109,8 +118,11 @@ export default function PlayerProfile() {
   const [bestRank, setBestRank] = useState<number | null>(null);
   const [worstRank, setWorstRank] = useState<number | null>(null);
 
-  // Radar attributes (mock deterministic for now based on player ID or stats)
+  // Radar attributes (from DB)
   const [playerAttributes, setPlayerAttributes] = useState<any[]>([]);
+  const [editingAttributes, setEditingAttributes] = useState(false);
+  const [editAttrs, setEditAttrs] = useState<PlayerAttributes>({ attack: 70, defense: 70, serve: 70, control: 70, speed: 70, mental: 70 });
+  const [savingAttrs, setSavingAttrs] = useState(false);
   const profileCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -188,17 +200,16 @@ export default function PlayerProfile() {
         setBestRank(maxRank);
         setWorstRank(minRank);
 
-        // Deterministic mock attributes
-        let seed = 0;
-        for (let i = 0; i < p.id.length; i++) seed = ((seed << 5) - seed + p.id.charCodeAt(i)) | 0;
-        const rand = () => { seed = (seed * 16807) % 2147483647; return (seed % 40) + 60; }; // 60-100
+        // Load attributes from DB or use defaults
+        const attrs: PlayerAttributes = (p as any).attributes || { attack: 70, defense: 70, serve: 70, control: 70, speed: 70, mental: 70 };
+        setEditAttrs(attrs);
         setPlayerAttributes([
-          { subject: 'Ataque', A: rand(), fullMark: 100 },
-          { subject: 'Defensa', A: rand(), fullMark: 100 },
-          { subject: 'Saque', A: rand(), fullMark: 100 },
-          { subject: 'Control', A: rand(), fullMark: 100 },
-          { subject: 'Velocidad', A: rand(), fullMark: 100 },
-          { subject: 'Mental', A: rand(), fullMark: 100 },
+          { subject: 'Ataque', A: attrs.attack, fullMark: 100 },
+          { subject: 'Defensa', A: attrs.defense, fullMark: 100 },
+          { subject: 'Saque', A: attrs.serve, fullMark: 100 },
+          { subject: 'Control', A: attrs.control, fullMark: 100 },
+          { subject: 'Velocidad', A: attrs.speed, fullMark: 100 },
+          { subject: 'Mental', A: attrs.mental, fullMark: 100 },
         ]);
       }
 
@@ -451,18 +462,101 @@ export default function PlayerProfile() {
         <div className="grid md:grid-cols-2 gap-6 mb-6">
           <ScrollReveal direction="up" delay={0.2}>
             <div className="glass-card p-5 h-full">
-              <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2">
-                <Target className="w-4 h-4 text-primary" /> Atributos (Estimados)
-              </h2>
-              <div className="h-64 w-full relative -ml-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={playerAttributes}>
-                    <PolarGrid stroke="hsl(var(--muted-foreground)/0.3)" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--foreground))", fontSize: 10 }} />
-                    <Radar name={player.full_name} dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
-                  </RadarChart>
-                </ResponsiveContainer>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-heading font-semibold text-foreground flex items-center gap-2">
+                  <Target className="w-4 h-4 text-primary" /> Atributos
+                </h2>
+                {isOwnProfile && !editingAttributes && (
+                  <Button size="sm" variant="ghost" className="text-xs gap-1 h-7" onClick={() => setEditingAttributes(true)}>
+                    <Edit3 className="w-3 h-3" /> Editar
+                  </Button>
+                )}
+                {isOwnProfile && editingAttributes && (
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" className="text-xs gap-1 h-7" disabled={savingAttrs} onClick={() => {
+                      setEditingAttributes(false);
+                      // Reset to current DB values
+                      const attrs: PlayerAttributes = (player as any).attributes || { attack: 70, defense: 70, serve: 70, control: 70, speed: 70, mental: 70 };
+                      setEditAttrs(attrs);
+                      setPlayerAttributes([
+                        { subject: 'Ataque', A: attrs.attack, fullMark: 100 },
+                        { subject: 'Defensa', A: attrs.defense, fullMark: 100 },
+                        { subject: 'Saque', A: attrs.serve, fullMark: 100 },
+                        { subject: 'Control', A: attrs.control, fullMark: 100 },
+                        { subject: 'Velocidad', A: attrs.speed, fullMark: 100 },
+                        { subject: 'Mental', A: attrs.mental, fullMark: 100 },
+                      ]);
+                    }}>
+                      <X className="w-3 h-3" /> Cancelar
+                    </Button>
+                    <Button size="sm" variant="default" className="text-xs gap-1 h-7" disabled={savingAttrs} onClick={async () => {
+                      setSavingAttrs(true);
+                      const result = await authAction("update_attributes", {
+                        player_id: loggedPlayer!.id,
+                        player_token: playerToken,
+                        attributes: editAttrs,
+                      });
+                      setSavingAttrs(false);
+                      if (result?.error) { toast.error(result.error); return; }
+                      toast.success("Atributos guardados");
+                      setEditingAttributes(false);
+                      // Update local player object
+                      if (player) (player as any).attributes = { ...editAttrs };
+                    }}>
+                      <Save className="w-3 h-3" /> {savingAttrs ? "..." : "Guardar"}
+                    </Button>
+                  </div>
+                )}
               </div>
+
+              {!editingAttributes ? (
+                <div className="h-64 w-full relative -ml-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={playerAttributes}>
+                      <PolarGrid stroke="hsl(var(--muted-foreground)/0.3)" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--foreground))", fontSize: 10 }} />
+                      <Radar name={player.full_name} dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="space-y-3 py-2">
+                  {[
+                    { key: 'attack', label: 'Ataque', emoji: '⚔️' },
+                    { key: 'defense', label: 'Defensa', emoji: '🛡️' },
+                    { key: 'serve', label: 'Saque', emoji: '🎯' },
+                    { key: 'control', label: 'Control', emoji: '🧠' },
+                    { key: 'speed', label: 'Velocidad', emoji: '⚡' },
+                    { key: 'mental', label: 'Mental', emoji: '💎' },
+                  ].map(attr => (
+                    <div key={attr.key} className="flex items-center gap-3">
+                      <span className="text-sm w-6">{attr.emoji}</span>
+                      <span className="text-xs text-muted-foreground w-20">{attr.label}</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={(editAttrs as any)[attr.key]}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          const newAttrs = { ...editAttrs, [attr.key]: val };
+                          setEditAttrs(newAttrs);
+                          setPlayerAttributes([
+                            { subject: 'Ataque', A: newAttrs.attack, fullMark: 100 },
+                            { subject: 'Defensa', A: newAttrs.defense, fullMark: 100 },
+                            { subject: 'Saque', A: newAttrs.serve, fullMark: 100 },
+                            { subject: 'Control', A: newAttrs.control, fullMark: 100 },
+                            { subject: 'Velocidad', A: newAttrs.speed, fullMark: 100 },
+                            { subject: 'Mental', A: newAttrs.mental, fullMark: 100 },
+                          ]);
+                        }}
+                        className="flex-1 accent-[hsl(var(--primary))] h-2 cursor-pointer"
+                      />
+                      <span className="text-xs font-heading font-bold text-primary w-8 text-right">{(editAttrs as any)[attr.key]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </ScrollReveal>
 

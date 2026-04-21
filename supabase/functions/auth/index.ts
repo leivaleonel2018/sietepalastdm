@@ -198,14 +198,8 @@ Deno.serve(async (req) => {
       const { data: challenge, error: cErr } = await supabase.from("challenges").select("*").eq("id", challenge_id).eq("status", "accepted").single();
       if (cErr || !challenge) return respond({ error: "Desafío no encontrado o no aceptado" });
 
-      const isParticipant = challenge.challenger_id === player_id || challenge.challenged_id === player_id;
-      let isRegistrar = false;
-      if (!isParticipant) {
-        const { data: pData } = await supabase.from("players").select("full_name").eq("id", player_id).single();
-        const registrarNames = ["hernán ariel duarte", "leonel samuel leiva", "gonzalez octavio"];
-        isRegistrar = pData ? registrarNames.includes(pData.full_name.toLowerCase()) : false;
-      }
-      if (!isParticipant && !isRegistrar) return respond({ error: "No tenés permiso para registrar este resultado" });
+      // Todos los jugadores registrados pueden arbitrar y subir resultados de desafíos
+      // El chequeo de player_token !== player_id de arriba asegura que estén autenticados.
 
       let cSetsWon = 0, dSetsWon = 0;
       if (set_scores && Array.isArray(set_scores)) {
@@ -231,6 +225,22 @@ Deno.serve(async (req) => {
 
       await checkAndAwardBadges(supabase, challenge.challenger_id);
       await checkAndAwardBadges(supabase, challenge.challenged_id);
+      return respond({ success: true });
+    }
+
+    if (action === "update_attributes") {
+      const { player_id, player_token, attributes } = data;
+      if (player_token !== player_id) return respond({ error: "No autorizado" });
+      if (!attributes || typeof attributes !== "object") return respond({ error: "Atributos inválidos" });
+      // Validate each attribute is between 0 and 100
+      const keys = ["attack", "defense", "serve", "control", "speed", "mental"];
+      for (const k of keys) {
+        if (attributes[k] == null || attributes[k] < 0 || attributes[k] > 100) {
+          return respond({ error: `Atributo ${k} debe estar entre 0 y 100` });
+        }
+      }
+      const { error } = await supabase.from("players").update({ attributes }).eq("id", player_id);
+      if (error) throw error;
       return respond({ success: true });
     }
 

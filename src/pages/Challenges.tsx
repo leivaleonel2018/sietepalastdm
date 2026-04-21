@@ -104,11 +104,7 @@ export default function Challenges() {
   const getPlayerName = (pid: string) => playersMap[pid]?.full_name || "?";
 
   const canRecordResult = (c: Challenge): boolean => {
-    if (isAdmin) return false; // Admin panel handles this, but since it's hidden now, no one can force it for others.
-    if (!player) return false;
-    // Participant can record
-    if (c.challenger_id === player.id || c.challenged_id === player.id) return true;
-    return false;
+    return !!player; // Any logged in player can record/umpire
   };
 
   const respondChallenge = async (challengeId: string, accept: boolean) => {
@@ -183,9 +179,7 @@ export default function Challenges() {
   };
 
   const pendingForMe = player ? challenges.filter(c => c.challenged_id === player.id && c.status === "pending") : [];
-  const acceptedMine = player ? challenges.filter(c => 
-    c.status === "accepted" && (c.challenger_id === player.id || c.challenged_id === player.id)
-  ) : [];
+  const acceptedMine = player ? challenges.filter(c => c.status === "accepted") : [];
   const pendingSent = player ? challenges.filter(c => c.challenger_id === player.id && c.status === "pending") : [];
   const allCompleted = challenges.filter(c => c.status === "completed");
 
