@@ -351,30 +351,70 @@ Deno.serve(async (req: Request) => {
 
     if (action === "generate_bracket") {
       const { tournament_id } = data;
+      
+      const { data: tournament } = await supabase.from("tournaments").select("format").eq("id", tournament_id).single();
+      const format = tournament?.format || "single_elimination";
+      
       const { data: regs } = await supabase.from("tournament_registrations").select("player_id, players(id, full_name, rating)").eq("tournament_id", tournament_id);
       if (!regs || regs.length < 2) return respond({ error: "Se necesitan al menos 2 jugadores" });
 
       const sorted = regs.map((r: any) => r.players).filter(Boolean).sort((a: any, b: any) => b.rating - a.rating);
       const n = sorted.length;
-      let sz = 1;
-      while (sz < n) sz *= 2;
-
-      const seeded: (any | null)[] = new Array(sz).fill(null);
-      for (let i = 0; i < n; i++) seeded[i] = sorted[i];
-
-      const rn: Record<number, string> = { 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos", 32: "16vos", 64: "32vos" };
-      const roundName = rn[sz] || `Ronda de ${sz}`;
       const matches: any[] = [];
+      
+      if (format === "groups_then_elimination" || format === "groups") {
+         // Generate groups of max 3
+         const numGroups = Math.ceil(n / 3);
+         const groups: any[][] = Array.from({length: numGroups}, () => []);
+         
+         // Snake draft
+         let dir = 1;
+         let g = 0;
+         for (const p of sorted) {
+           groups[g].push(p);
+           g += dir;
+           if (g === numGroups) { g = numGroups - 1; dir = -1; }
+           else if (g === -1) { g = 0; dir = 1; }
+         }
+         
+         // Generate matches for each group
+         for (let i = 0; i < numGroups; i++) {
+           const groupName = `Grupo ${String.fromCharCode(65 + i)}`;
+           const groupPlayers = groups[i];
+           let matchOrder = 1;
+           for (let p1Idx = 0; p1Idx < groupPlayers.length; p1Idx++) {
+             for (let p2Idx = p1Idx + 1; p2Idx < groupPlayers.length; p2Idx++) {
+                matches.push({
+                  tournament_id,
+                  player1_id: groupPlayers[p1Idx].id,
+                  player2_id: groupPlayers[p2Idx].id,
+                  group_name: groupName,
+                  match_order: matchOrder++,
+                });
+             }
+           }
+         }
+      } else {
+        // Single elimination logic
+        let sz = 1;
+        while (sz < n) sz *= 2;
 
-      for (let i = 0; i < sz / 2; i++) {
-        const p1 = seeded[i], p2 = seeded[sz - 1 - i];
-        if (p1 || p2) {
-          matches.push({
-            tournament_id, player1_id: p1?.id || null, player2_id: p2?.id || null,
-            round: roundName, match_order: i + 1,
-            ...(p1 && !p2 ? { winner_id: p1.id, player1_score: 2, player2_score: 0 } : {}),
-            ...(!p1 && p2 ? { winner_id: p2.id, player1_score: 0, player2_score: 2 } : {}),
-          });
+        const seeded: (any | null)[] = new Array(sz).fill(null);
+        for (let i = 0; i < n; i++) seeded[i] = sorted[i];
+
+        const rn: Record<number, string> = { 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos", 32: "16vos", 64: "32vos" };
+        const roundName = rn[sz] || `Ronda de ${sz}`;
+
+        for (let i = 0; i < sz / 2; i++) {
+          const p1 = seeded[i], p2 = seeded[sz - 1 - i];
+          if (p1 || p2) {
+            matches.push({
+              tournament_id, player1_id: p1?.id || null, player2_id: p2?.id || null,
+              round: roundName, match_order: i + 1,
+              ...(p1 && !p2 ? { winner_id: p1.id, player1_score: 2, player2_score: 0 } : {}),
+              ...(!p1 && p2 ? { winner_id: p2.id, player1_score: 0, player2_score: 2 } : {}),
+            });
+          }
         }
       }
 
@@ -396,11 +436,15 @@ Deno.serve(async (req: Request) => {
       
       let winners: string[] = [];
       let nextRoundName = "";
+      const nextMatches: any[] = [];
 
       if (elimMatches.length === 0 && groupMatches.length > 0) {
         // Transition from groups to elimination
         const unfinishedGroups = groupMatches.filter((m: any) => !m.winner_id);
         if (unfinishedGroups.length > 0) return respond({ error: "Hay partidos de grupo sin resultado" });
+        
+        let firsts: string[] = [];
+        let seconds: string[] = [];
         
         // Calculate standings and take top 2 from each group
         const groupNames = [...new Set(groupMatches.map((m: any) => m.group_name))];
@@ -413,22 +457,49 @@ Deno.serve(async (req: Request) => {
             matches.forEach((m: any) => {
               if (m.winner_id === id) points += 2; else points += 1;
             });
+            // Need to handle tie-breakers perfectly, but points is a good start.
             return { id, points };
           }).sort((a, b) => b.points - a.points);
           
-          // Take top 2
-          if (stats[0]) winners.push(stats[0].id);
-          if (stats[1]) winners.push(stats[1].id);
+          if (stats[0]) firsts.push(stats[0].id);
+          if (stats[1]) seconds.push(stats[1].id);
         }
         
+        // Shift seconds by 1 to prevent playing own group in first elimination round
+        let shiftedSeconds = [];
+        if (seconds.length > 0) {
+           shiftedSeconds = [...seconds.slice(1), seconds[0]];
+        }
+        
+        let allAdvancing = [...firsts, ...shiftedSeconds];
+        
+        let n = allAdvancing.length;
+        let sz = 1;
+        while (sz < n) sz *= 2;
+        
+        const seeded: (string | null)[] = new Array(sz).fill(null);
+        for (let i = 0; i < n; i++) seeded[i] = allAdvancing[i];
+
         const rn: Record<number, string> = { 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos", 32: "16vos" };
-        nextRoundName = rn[winners.length] || `Ronda de ${winners.length}`;
+        nextRoundName = rn[sz] || `Ronda de ${sz}`;
+
+        for (let i = 0; i < sz / 2; i++) {
+          const p1 = seeded[i], p2 = seeded[sz - 1 - i];
+          if (p1 || p2) {
+             nextMatches.push({
+                tournament_id, player1_id: p1 || null, player2_id: p2 || null,
+                round: nextRoundName, match_order: i + 1,
+                ...(p1 && !p2 ? { winner_id: p1, player1_score: 2, player2_score: 0 } : {}),
+                ...(!p1 && p2 ? { winner_id: p2, player1_score: 0, player2_score: 2 } : {}),
+             });
+          }
+        }
       } else {
         const unfinished = elimMatches.filter((m: any) => !m.winner_id);
         if (unfinished.length > 0) return respond({ error: "Hay partidos sin resultado en la ronda actual" });
 
         const rounds = [...new Set(elimMatches.map((m: any) => m.round))];
-        const latestRound = rounds[rounds.length - 1];
+        const latestRound = rounds[rounds.length - 1]; // This assumes order of insertion corresponds to rounds. Safer: sort by created_at.
         const latestMatches = elimMatches.filter((m: any) => m.round === latestRound);
 
         if (latestMatches.length <= 1) return respond({ error: "El torneo ya terminó" });
@@ -436,21 +507,20 @@ Deno.serve(async (req: Request) => {
         winners = latestMatches.map((m: any) => m.winner_id).filter(Boolean);
         const rn: Record<number, string> = { 1: "Final", 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos" };
         nextRoundName = rn[winners.length] || `Ronda de ${winners.length}`;
-      }
-
-      const nextMatches: any[] = [];
-      for (let i = 0; i < winners.length; i += 2) {
-        if (i + 1 < winners.length) {
-          nextMatches.push({
-            tournament_id, player1_id: winners[i], player2_id: winners[i + 1],
-            round: nextRoundName, match_order: Math.floor(i / 2) + 1,
-          });
-        } else {
-          nextMatches.push({
-            tournament_id, player1_id: winners[i], player2_id: null,
-            round: nextRoundName, match_order: Math.floor(i / 2) + 1,
-            winner_id: winners[i], player1_score: 2, player2_score: 0,
-          });
+        
+        for (let i = 0; i < winners.length; i += 2) {
+          if (i + 1 < winners.length) {
+            nextMatches.push({
+              tournament_id, player1_id: winners[i], player2_id: winners[i + 1],
+              round: nextRoundName, match_order: Math.floor(i / 2) + 1,
+            });
+          } else {
+            nextMatches.push({
+              tournament_id, player1_id: winners[i], player2_id: null,
+              round: nextRoundName, match_order: Math.floor(i / 2) + 1,
+              winner_id: winners[i], player1_score: 2, player2_score: 0,
+            });
+          }
         }
       }
 
