@@ -556,7 +556,7 @@ export default function TournamentDetail() {
                   </Button>
                 </div>
               </div>
-              <div className="glass-card overflow-hidden relative h-[600px] bg-black/20" ref={bracketRef}>
+              <div className="glass-card overflow-hidden relative h-[70vh] min-h-[400px] max-h-[800px] bg-black/20" ref={bracketRef}>
                 <motion.div 
                   className="p-12 min-w-max min-h-max cursor-grab active:cursor-grabbing origin-center"
                   drag
