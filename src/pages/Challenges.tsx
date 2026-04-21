@@ -204,19 +204,19 @@ export default function Challenges() {
             <h2 className="font-heading font-semibold text-sm text-foreground mb-3">⚡ Desafíos Recibidos</h2>
             <div className="space-y-2">
               {pendingForMe.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                  <div className="flex items-center gap-2">
+                <div key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     <PlayerAvatar player={getPlayer(c.challenger_id)} size="w-7 h-7" />
-                    <span className="text-sm text-foreground">
+                    <span className="text-sm text-foreground truncate">
                       <Link to={`/jugador/${c.challenger_id}`} className="font-medium hover:underline">{getPlayerName(c.challenger_id)}</Link> te desafió
                     </span>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => respondChallenge(c.id, true)} className="p-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary" title="Aceptar">
-                      <Check className="w-4 h-4" />
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button onClick={() => respondChallenge(c.id, true)} className="flex-1 sm:flex-none py-1.5 px-3 flex items-center justify-center rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors" title="Aceptar">
+                      <Check className="w-4 h-4 mr-1" /> Aceptar
                     </button>
-                    <button onClick={() => respondChallenge(c.id, false)} className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Rechazar">
-                      <X className="w-4 h-4" />
+                    <button onClick={() => respondChallenge(c.id, false)} className="flex-1 sm:flex-none py-1.5 px-3 flex items-center justify-center rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors" title="Rechazar">
+                      <X className="w-4 h-4 mr-1" /> Rechazar
                     </button>
                   </div>
                 </div>
@@ -236,22 +236,22 @@ export default function Challenges() {
                 const challenged = getPlayer(c.challenged_id);
                 return (
                   <div key={c.id} className="p-3 rounded-lg bg-muted/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                      <div className="flex items-center flex-wrap gap-2">
                         <PlayerAvatar player={challenger} size="w-7 h-7" />
-                        <span className="text-sm text-foreground">
-                          <Link to={`/jugador/${c.challenger_id}`} className="font-medium hover:underline">{getPlayerName(c.challenger_id)}</Link>
+                        <span className="text-sm text-foreground flex-1 min-w-0">
+                          <Link to={`/jugador/${c.challenger_id}`} className="font-medium hover:underline truncate">{getPlayerName(c.challenger_id)}</Link>
                           <span className="text-muted-foreground mx-1.5">vs</span>
-                          <Link to={`/jugador/${c.challenged_id}`} className="font-medium hover:underline">{getPlayerName(c.challenged_id)}</Link>
+                          <Link to={`/jugador/${c.challenged_id}`} className="font-medium hover:underline truncate">{getPlayerName(c.challenged_id)}</Link>
                         </span>
                         <PlayerAvatar player={challenged} size="w-7 h-7" />
                       </div>
                       {!isRecording && canRecordResult(c) && (
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="default" className="text-xs" onClick={() => setLiveUmpireChallenge(c)}>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                          <Button size="sm" variant="default" className="text-xs flex-1 sm:flex-none" onClick={() => setLiveUmpireChallenge(c)}>
                             Arbitrar en Vivo
                           </Button>
-                          <Button size="sm" variant="outline" className="text-xs" onClick={() => {
+                          <Button size="sm" variant="outline" className="text-xs flex-1 sm:flex-none" onClick={() => {
                             setRecordingId(c.id);
                             setSets([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
                           }}>

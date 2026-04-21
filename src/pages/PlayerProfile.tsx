@@ -459,9 +459,10 @@ export default function PlayerProfile() {
         )}
 
         {/* Radar & Rating History Grid */}
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
-          <ScrollReveal direction="up" delay={0.2}>
-            <div className="glass-card p-5 h-full">
+        {/* Radar & Rating History Grid */}
+        <ScrollReveal direction="up" delay={0.2}>
+          <div className="grid md:grid-cols-2 gap-6 mb-6 w-full">
+            <div className="glass-card p-5 h-full flex flex-col">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-heading font-semibold text-foreground flex items-center gap-2">
                   <Target className="w-4 h-4 text-primary" /> Atributos
@@ -475,7 +476,6 @@ export default function PlayerProfile() {
                   <div className="flex gap-1">
                     <Button size="sm" variant="ghost" className="text-xs gap-1 h-7" disabled={savingAttrs} onClick={() => {
                       setEditingAttributes(false);
-                      // Reset to current DB values
                       const attrs: PlayerAttributes = (player as any).attributes || { attack: 70, defense: 70, serve: 70, control: 70, speed: 70, mental: 70 };
                       setEditAttrs(attrs);
                       setPlayerAttributes([
@@ -500,7 +500,6 @@ export default function PlayerProfile() {
                       if (result?.error) { toast.error(result.error); return; }
                       toast.success("Atributos guardados");
                       setEditingAttributes(false);
-                      // Update local player object
                       if (player) (player as any).attributes = { ...editAttrs };
                     }}>
                       <Save className="w-3 h-3" /> {savingAttrs ? "..." : "Guardar"}
@@ -510,17 +509,17 @@ export default function PlayerProfile() {
               </div>
 
               {!editingAttributes ? (
-                <div className="w-full max-w-[320px] aspect-square mx-auto relative flex items-center justify-center">
+                <div className="flex-1 w-full min-h-[300px] relative flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart cx="50%" cy="50%" outerRadius="65%" data={playerAttributes}>
+                    <RadarChart cx="50%" cy="50%" outerRadius="75%" data={playerAttributes}>
                       <PolarGrid stroke="hsl(var(--muted-foreground)/0.3)" />
-                      <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--foreground))", fontSize: 11 }} />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--foreground))", fontSize: 11, fontWeight: 500 }} />
                       <Radar name={player.full_name} dataKey="A" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
                     </RadarChart>
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="space-y-3 py-2">
+                <div className="space-y-3 py-2 flex-1 flex flex-col justify-center">
                   {[
                     { key: 'attack', label: 'Ataque', emoji: '⚔️' },
                     { key: 'defense', label: 'Defensa', emoji: '🛡️' },
@@ -558,14 +557,12 @@ export default function PlayerProfile() {
                 </div>
               )}
             </div>
-          </ScrollReveal>
 
-          <ScrollReveal direction="up" delay={0.3}>
-            <div className="glass-card p-5 h-full">
+            <div className="glass-card p-5 h-full flex flex-col">
               <h2 className="font-heading font-semibold text-foreground mb-3 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" /> Evolución de Rating
               </h2>
-              <div className="h-64 w-full">
+              <div className="flex-1 w-full min-h-[300px]">
                 {ratingHistory.length > 1 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={ratingHistory}>
@@ -581,8 +578,8 @@ export default function PlayerProfile() {
                 )}
               </div>
             </div>
-          </ScrollReveal>
-        </div>
+          </div>
+        </ScrollReveal>
 
         {/* Vitrina de Trofeos (Trophy Room) & Badges */}
         <ScrollReveal direction="up" delay={0.4}>
