@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Trophy, Users, Star, ArrowRight, Swords, BookOpen, Newspaper, Crown, Medal, TrendingUp, Flame, ChevronRight } from "lucide-react";
+import { Trophy, Users, Star, ArrowRight, Swords, BookOpen, Newspaper, Crown, Medal, TrendingUp, Flame, ChevronRight, PlayCircle, Activity } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import Navbar from "@/components/Navbar";
+import { ScrollReveal } from "@/components/ScrollReveal";
 
 interface NewsItem {
   id: string;
@@ -166,6 +167,7 @@ export default function Index() {
   const [activeTournament, setActiveTournament] = useState<ActiveTournament | null>(null);
   const [bracketMatches, setBracketMatches] = useState<BracketMatch[]>([]);
   const [playerStreaks, setPlayerStreaks] = useState<Record<string, number>>({});
+  const [mvpPlayer, setMvpPlayer] = useState<Player | null>(null);
 
   const animatedPlayers = useCountUp(totalPlayers);
   const animatedMatches = useCountUp(totalMatches);
@@ -247,6 +249,13 @@ export default function Index() {
         setPlayersMap(map);
       }
     }
+    // Calculate MVP based on streaks or top recent wins
+    if (topRes.data && topRes.data.length > 0) {
+      // Just a simple MVP logic: the highest rated player with a streak >= 3, or the #1 player
+      const mvp = (topRes.data as Player[]).find(p => playerStreaks[p.id] >= 3) || topRes.data[0];
+      setMvpPlayer(mvp as Player);
+    }
+
     setLoadingMatches(false);
 
     // Active tournament bracket — fetch without blocking recent matches
@@ -349,10 +358,10 @@ export default function Index() {
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               Temporada 2026 activa
             </div>
-            <h1 className="font-heading text-4xl md:text-5xl font-bold text-primary-foreground mb-4 leading-tight">
+            <h1 className="font-heading text-4xl md:text-5xl font-bold text-foreground mb-4 leading-tight">
               TDM<br />Siete Palmas 🏓
             </h1>
-            <p className="text-primary-foreground/60 text-lg mb-8 leading-relaxed max-w-lg">
+            <p className="text-muted-foreground text-lg mb-8 leading-relaxed max-w-lg">
               Torneos recreativos de tenis de mesa en Siete Palmas.
               Registrate, competí y subí en el ranking.
             </p>
@@ -374,7 +383,7 @@ export default function Index() {
               )}
               <Link
                 to="/torneos"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-primary-foreground/80 font-heading font-semibold text-sm hover:text-primary-foreground transition-all border border-primary-foreground/20 hover:border-primary-foreground/40"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-foreground/80 font-heading font-semibold text-sm hover:text-foreground transition-all border border-foreground/20 hover:border-foreground/40"
               >
                 Ver Torneos
               </Link>
@@ -383,13 +392,13 @@ export default function Index() {
             {/* Hero counters with count-up */}
             <div className="flex gap-6 mt-8">
               <div className="flex flex-col">
-                <span className="font-heading text-2xl font-bold text-primary-foreground">{animatedPlayers}</span>
-                <span className="text-xs text-primary-foreground/50">Jugadores activos</span>
+                <span className="font-heading text-2xl font-bold text-foreground">{animatedPlayers}</span>
+                <span className="text-xs text-muted-foreground">Jugadores activos</span>
               </div>
-              <div className="w-px bg-primary-foreground/20" />
+              <div className="w-px bg-foreground/20" />
               <div className="flex flex-col">
-                <span className="font-heading text-2xl font-bold text-primary-foreground">{animatedMatches}</span>
-                <span className="text-xs text-primary-foreground/50">Partidos jugados</span>
+                <span className="font-heading text-2xl font-bold text-foreground">{animatedMatches}</span>
+                <span className="text-xs text-muted-foreground">Partidos jugados</span>
               </div>
             </div>
           </div>
@@ -408,20 +417,23 @@ export default function Index() {
         <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 mb-14">
           {features.map((f, i) => {
             const inner = (
-              <div className="glass-card p-5 animate-slide-up hover:shadow-md transition-all duration-300 hover:-translate-y-1 group cursor-pointer h-full" style={{ animationDelay: `${i * 0.1}s` }}>
-                <div className="flex items-start justify-between">
-                  <div className={`w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center ${f.color} mb-3`}>
-                    {f.icon}
+              <ScrollReveal direction="up" delay={i * 0.1} className="h-full">
+                <div className="glass-card p-5 hover:shadow-lg transition-all duration-300 hover:-translate-y-2 group cursor-pointer h-full relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <div className="flex items-start justify-between relative z-10">
+                    <div className={`w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center ${f.color} mb-4 group-hover:scale-110 transition-transform`}>
+                      {f.icon}
+                    </div>
+                    {f.link ? (
+                      <ChevronRight className="w-5 h-5 text-muted-foreground opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
+                    ) : (
+                      <span className="text-[10px] font-bold bg-accent/20 text-accent px-2 py-0.5 rounded-full uppercase tracking-wider">Próximamente</span>
+                    )}
                   </div>
-                  {f.link ? (
-                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
-                  ) : (
-                    <span className="text-[10px] font-medium bg-accent/15 text-accent-foreground px-2 py-0.5 rounded-full">Próximamente</span>
-                  )}
+                  <h3 className="font-heading font-semibold text-foreground mb-2 text-lg relative z-10">{f.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed relative z-10">{f.desc}</p>
                 </div>
-                <h3 className="font-heading font-semibold text-foreground mb-1">{f.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{f.desc}</p>
-              </div>
+              </ScrollReveal>
             );
             return f.link ? (
               <Link key={i} to={f.link} className="block">{inner}</Link>
@@ -431,23 +443,68 @@ export default function Index() {
           })}
         </div>
 
-        {/* Activity Ticker */}
+        {/* Activity Ticker - ESPN Style */}
         {tickerItems.length > 0 && (
-          <div className="mb-8 overflow-hidden rounded-lg bg-primary/5 py-2.5 px-4 group">
-            <div className="flex gap-12 animate-marquee group-hover:[animation-play-state:paused] whitespace-nowrap">
-              {[...tickerItems, ...tickerItems].map((t, i) => (
-                <span key={i} className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-primary/40 flex-shrink-0" />
-                  {t}
+          <ScrollReveal direction="up" delay={0.2}>
+            <div className="mb-14 overflow-hidden rounded-xl bg-card border border-border shadow-lg flex group">
+              <div className="bg-primary px-4 py-3 flex items-center justify-center relative overflow-hidden flex-shrink-0 z-10">
+                <div className="absolute inset-0 bg-white/20 animate-pulse-glow" />
+                <span className="font-heading font-bold text-primary-foreground text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
+                  <Activity className="w-4 h-4" /> Últimos Resultados
                 </span>
-              ))}
+              </div>
+              <div className="flex-1 overflow-hidden relative flex items-center bg-card/50">
+                <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-card to-transparent z-10" />
+                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card to-transparent z-10" />
+                <div className="flex gap-12 animate-marquee group-hover:[animation-play-state:paused] whitespace-nowrap px-4">
+                  {[...tickerItems, ...tickerItems, ...tickerItems].map((t, i) => (
+                    <span key={i} className="text-sm font-medium text-foreground inline-flex items-center gap-3">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          </ScrollReveal>
+        )}
+
+        {/* MVP of the Week */}
+        {mvpPlayer && (
+          <ScrollReveal direction="up" delay={0.3}>
+            <div className="mb-14 relative overflow-hidden rounded-2xl p-px bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 shadow-xl">
+              <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-red-500/20 animate-pulse-glow" />
+              <div className="relative bg-card rounded-[15px] p-6 flex flex-col sm:flex-row items-center gap-6 z-10">
+                <div className="flex-1">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-500 text-xs font-bold tracking-widest uppercase mb-3">
+                    <Flame className="w-3.5 h-3.5" /> MVP de la Semana
+                  </div>
+                  <h3 className="font-heading text-2xl font-bold text-foreground mb-1">{mvpPlayer.full_name}</h3>
+                  <p className="text-muted-foreground text-sm mb-4">Jugador destacado por su excelente rendimiento y racha de victorias.</p>
+                  <Link to={`/jugador/${mvpPlayer.id}`} className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/80 transition-colors">
+                    Ver perfil <ChevronRight className="w-4 h-4" />
+                  </Link>
+                </div>
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full blur opacity-40 group-hover:opacity-75 transition duration-500"></div>
+                  <div className="relative w-24 h-24 rounded-full border-4 border-card overflow-hidden">
+                    {mvpPlayer.avatar_url ? (
+                      <img src={mvpPlayer.avatar_url} alt="MVP" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-primary/10 flex items-center justify-center text-3xl font-bold text-primary">
+                        {mvpPlayer.full_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
         )}
 
         {/* Top 5 Ranking with Podium */}
         <div className="grid lg:grid-cols-3 gap-6 mb-14">
-          <div className="lg:col-span-1 animate-slide-up stagger-1">
+          <ScrollReveal direction="left" delay={0.1} className="lg:col-span-1">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-primary" /> Ranking
@@ -474,8 +531,12 @@ export default function Index() {
                 <button onClick={fetchData} className="text-xs text-primary hover:underline">Reintentar</button>
               </div>
             ) : topPlayers.length === 0 ? (
-              <div className="glass-card p-6 text-center">
-                <p className="text-sm text-muted-foreground">Sin jugadores aún</p>
+              <div className="glass-card p-10 text-center flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <Trophy className="w-8 h-8 text-muted-foreground/50" />
+                </div>
+                <p className="text-sm font-medium text-foreground mb-1">Sin jugadores aún</p>
+                <p className="text-xs text-muted-foreground">Regístrate para aparecer aquí</p>
               </div>
             ) : (
               <>
@@ -537,10 +598,10 @@ export default function Index() {
                 )}
               </>
             )}
-          </div>
+          </ScrollReveal>
 
           {/* Recent Matches */}
-          <div className="lg:col-span-2 animate-slide-up stagger-2">
+          <ScrollReveal direction="right" delay={0.2} className="lg:col-span-2">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" /> Últimos Partidos
@@ -566,7 +627,13 @@ export default function Index() {
                   <button onClick={fetchData} className="text-xs text-primary hover:underline">Reintentar</button>
                 </div>
               ) : recentMatches.length === 0 ? (
-                <p className="p-6 text-sm text-muted-foreground text-center">Los resultados de los partidos aparecerán acá</p>
+                <div className="p-10 text-center flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <Swords className="w-8 h-8 text-muted-foreground/50" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground mb-1">Sin partidos recientes</p>
+                  <p className="text-xs text-muted-foreground">Los resultados aparecerán aquí</p>
+                </div>
               ) : (
                 <div className="divide-y divide-border/50">
                   {recentMatches.slice(0, 5).map(m => {
@@ -624,13 +691,13 @@ export default function Index() {
                 </div>
               )}
             </div>
-          </div>
+          </ScrollReveal>
         </div>
 
         {/* Mini Bracket – active tournament */}
         {activeTournament && bracketMatches.length > 0 && (
-          <div className="mb-14 animate-slide-up">
-            <div className="flex items-center justify-between mb-4">
+          <ScrollReveal direction="up" delay={0.1}>
+            <div className="mb-14">
               <h2 className="font-heading text-xl font-bold text-foreground flex items-center gap-2">
                 <Swords className="w-5 h-5 text-primary" /> Bracket: {activeTournament.name}
               </h2>
@@ -662,12 +729,12 @@ export default function Index() {
                 ))}
               </div>
             </div>
-          </div>
+          </ScrollReveal>
         )}
 
         {/* News Section – editorial grid */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
+        <ScrollReveal direction="up" delay={0.2}>
+          <div className="mb-8">
             <h2 className="font-heading text-2xl font-bold text-foreground flex items-center gap-2">
               <Newspaper className="w-6 h-6 text-primary" /> Noticias
             </h2>
@@ -736,7 +803,7 @@ export default function Index() {
               })}
             </div>
           )}
-        </div>
+        </ScrollReveal>
       </section>
     </div>
   );

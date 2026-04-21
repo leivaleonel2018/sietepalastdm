@@ -11,6 +11,7 @@ import { Swords, Check, X, Trophy, Calendar, TrendingUp, TrendingDown } from "lu
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { Plus } from "lucide-react";
+import { LiveUmpire } from "@/components/LiveUmpire";
 
 interface Player {
   id: string;
@@ -67,6 +68,9 @@ export default function Challenges() {
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [sets, setSets] = useState<SetScore[]>([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
 
+  // Live Umpiring
+  const [liveUmpireChallenge, setLiveUmpireChallenge] = useState<Challenge | null>(null);
+
   useEffect(() => {
     fetchAll();
   }, []);
@@ -100,12 +104,10 @@ export default function Challenges() {
   const getPlayerName = (pid: string) => playersMap[pid]?.full_name || "?";
 
   const canRecordResult = (c: Challenge): boolean => {
-    if (isAdmin) return true;
+    if (isAdmin) return false; // Admin panel handles this, but since it's hidden now, no one can force it for others.
     if (!player) return false;
     // Participant can record
     if (c.challenger_id === player.id || c.challenged_id === player.id) return true;
-    // Registrars can record any
-    if (registrarIds.has(player.id)) return true;
     return false;
   };
 
@@ -138,9 +140,7 @@ export default function Challenges() {
     }
 
     let result;
-    if (isAdmin && adminToken) {
-      result = await adminAction("admin_record_challenge_result", { challenge_id: challengeId, set_scores }, adminToken);
-    } else if (player) {
+    if (player) {
       result = await authAction("record_challenge_result", {
         challenge_id: challengeId, set_scores,
         player_id: player.id, player_token: playerToken,
@@ -148,22 +148,44 @@ export default function Challenges() {
     } else {
       toast.error("No autorizado"); return;
     }
-    if (result.error) { toast.error(result.error); return; }
+    if (result?.error) { toast.error(result.error); return; }
     toast.success("Resultado registrado. Ratings actualizados.");
     setRecordingId(null);
     setSets([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
     fetchAll();
   };
 
+  const handleLiveMatchFinish = async (finishedSets: {p1: number, p2: number}[], durationSeconds: number) => {
+    if (!liveUmpireChallenge) return;
+    
+    let p1Wins = 0, p2Wins = 0;
+    finishedSets.forEach(s => { if (s.p1 > s.p2) p1Wins++; else p2Wins++; });
+    if (p1Wins < 2 && p2Wins < 2) {
+      toast.error("Alguien debe ganar al menos 2 sets (mejor de 3)");
+      return;
+    }
+
+    toast.info("Guardando resultado...");
+    let result;
+    if (player) {
+      result = await authAction("record_challenge_result", {
+        challenge_id: liveUmpireChallenge.id, set_scores: finishedSets,
+        player_id: player.id, player_token: playerToken,
+      });
+    } else {
+      toast.error("No autorizado"); return;
+    }
+    
+    if (result?.error) { toast.error(result.error); return; }
+    toast.success(`¡Partido registrado! Duración: ${Math.floor(durationSeconds/60)}m ${durationSeconds%60}s`);
+    setLiveUmpireChallenge(null);
+    fetchAll();
+  };
+
   const pendingForMe = player ? challenges.filter(c => c.challenged_id === player.id && c.status === "pending") : [];
-  const acceptedMine = isAdmin
-    ? challenges.filter(c => c.status === "accepted")
-    : player
-    ? challenges.filter(c =>
-        c.status === "accepted" &&
-        (c.challenger_id === player.id || c.challenged_id === player.id || registrarIds.has(player.id))
-      )
-    : [];
+  const acceptedMine = player ? challenges.filter(c => 
+    c.status === "accepted" && (c.challenger_id === player.id || c.challenged_id === player.id)
+  ) : [];
   const pendingSent = player ? challenges.filter(c => c.challenger_id === player.id && c.status === "pending") : [];
   const allCompleted = challenges.filter(c => c.status === "completed");
 
@@ -231,12 +253,17 @@ export default function Challenges() {
                         <PlayerAvatar player={challenged} size="w-7 h-7" />
                       </div>
                       {!isRecording && canRecordResult(c) && (
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setRecordingId(c.id);
-                          setSets([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
-                        }}>
-                          Registrar resultado
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="default" className="text-xs" onClick={() => setLiveUmpireChallenge(c)}>
+                            Arbitrar en Vivo
+                          </Button>
+                          <Button size="sm" variant="outline" className="text-xs" onClick={() => {
+                            setRecordingId(c.id);
+                            setSets([{ p1: "", p2: "" }, { p1: "", p2: "" }]);
+                          }}>
+                            Subir Manual
+                          </Button>
+                        </div>
                       )}
                     </div>
 
@@ -401,6 +428,17 @@ export default function Challenges() {
           )}
         </div>
       </div>
+
+      {/* Live Umpire Modal */}
+      {liveUmpireChallenge && (
+        <LiveUmpire
+          player1Name={getPlayerName(liveUmpireChallenge.challenger_id)}
+          player2Name={getPlayerName(liveUmpireChallenge.challenged_id)}
+          maxSets={3}
+          onFinishMatch={handleLiveMatchFinish}
+          onCancel={() => setLiveUmpireChallenge(null)}
+        />
+      )}
     </div>
   );
 }

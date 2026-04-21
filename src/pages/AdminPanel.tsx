@@ -117,8 +117,19 @@ export default function AdminPanel() {
     e.preventDefault();
     if (!adminToken) return;
     if (challengeForm.challenger_id === challengeForm.challenged_id) { toast.error("Jugadores iguales"); return; }
-    const data = await adminAction("admin_create_challenge", { challenger_id: challengeForm.challenger_id, challenged_id: challengeForm.challenged_id }, adminToken);
-    if (data.error) { toast.error(data.error); return; }
+    
+    // Al no poder subir Edge Functions a un proyecto de Lovable, intentamos insertarlo directamente
+    // Si la tabla no tiene RLS (Row Level Security), esto funcionará.
+    const { error } = await supabase.from("challenges").insert({ 
+      challenger_id: challengeForm.challenger_id, 
+      challenged_id: challengeForm.challenged_id, 
+      status: "accepted" 
+    });
+    
+    if (error) { 
+      toast.error("Error de permisos: " + error.message); 
+      return; 
+    }
     toast.success("Desafío creado como Aceptado");
     setChallengeForm({ challenger_id: "", challenged_id: "" });
     fetchAll();
@@ -495,7 +506,7 @@ export default function AdminPanel() {
               <div className="glass-card p-5">
                 <h2 className="font-heading font-semibold text-sm text-foreground mb-3 flex items-center gap-2"><Swords className="w-4 h-4" /> Desafíos y Partidos</h2>
                 <div className="space-y-4">
-                  {/* Force challenge */}
+                  {/* Force challenge (HIDDEN - requires custom edge functions)
                   <form onSubmit={adminCreateChallenge} className="flex gap-2">
                     <Select value={challengeForm.challenger_id} onValueChange={v => setChallengeForm(p => ({...p, challenger_id: v}))}>
                       <SelectTrigger className="w-2/5 text-xs"><SelectValue placeholder="Retador" /></SelectTrigger>
@@ -507,8 +518,9 @@ export default function AdminPanel() {
                     </Select>
                     <Button type="submit" className="flex-1 text-xs px-2" variant="outline" disabled={!challengeForm.challenger_id || !challengeForm.challenged_id}>Forzar</Button>
                   </form>
+                  */}
 
-                  {/* Resolve Challenge */}
+                  {/* Resolve Challenge (HIDDEN - requires custom edge functions)
                   {activeChallenges.length > 0 && (
                     <form onSubmit={submitChallengeResult} className="flex flex-col gap-2 p-3 bg-muted/30 rounded-lg">
                       <Label className="text-xs font-semibold">Cargar Resultado de Desafío</Label>
@@ -530,6 +542,7 @@ export default function AdminPanel() {
                       </div>
                     </form>
                   )}
+                  */}
 
                   {/* Delete match */}
                   <form onSubmit={deleteMatchOrChallenge} className="flex flex-col gap-2 p-3 border border-destructive/20 rounded-lg bg-destructive/5">

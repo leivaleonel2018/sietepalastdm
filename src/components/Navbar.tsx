@@ -1,13 +1,45 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trophy, Users, LogIn, LogOut, Shield, Menu, X, Swords, BookOpen, Home, Newspaper } from "lucide-react";
-import { useState } from "react";
+import { Trophy, Users, LogIn, LogOut, Shield, Menu, X, Swords, BookOpen, Home, Newspaper, Bell } from "lucide-react";
+import { useState, useEffect } from "react";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export default function Navbar() {
   const { player, isAdmin, logout } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<string[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    if (!player) return;
+
+    // Listen to Challenges where challenged_id = player.id
+    const channel = supabase.channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'challenges', filter: `challenged_id=eq.${player.id}` },
+        (payload) => {
+          setNotifications(prev => ["¡Te han desafiado a un partido!", ...prev]);
+          toast("¡Nuevo desafío!", { description: "Revisa tu sección de desafíos." });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'news' },
+        (payload: any) => {
+          setNotifications(prev => [`Nueva noticia: ${payload.new.title}`, ...prev]);
+          toast("Noticia publicada", { description: payload.new.title });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [player]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -25,7 +57,7 @@ export default function Navbar() {
     <nav className="nav-dark sticky top-0 z-50 border-b border-border/10 backdrop-blur-md">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-14">
-          <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 text-primary-foreground font-heading font-bold text-lg hover:opacity-90 transition-opacity">
+          <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 text-foreground font-heading font-bold text-lg hover:opacity-90 transition-opacity">
             🏓 TDM
           </Link>
 
@@ -36,8 +68,8 @@ export default function Navbar() {
                 to={link.to}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                   isActive(link.to)
-                    ? "bg-primary/20 text-primary-foreground"
-                    : "text-primary-foreground/50 hover:text-primary-foreground hover:bg-primary-foreground/5"
+                    ? "bg-primary/20 text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
                 }`}
               >
                 {link.icon}{link.label}
@@ -48,8 +80,8 @@ export default function Navbar() {
                 to="/admin"
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                   isActive("/admin")
-                    ? "bg-primary/20 text-primary-foreground"
-                    : "text-primary-foreground/50 hover:text-primary-foreground hover:bg-primary-foreground/5"
+                    ? "bg-primary/20 text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
                 }`}
               >
                 <Shield className="w-4 h-4" />Admin
@@ -58,16 +90,53 @@ export default function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
+            {/* Notifications Bell */}
             {player && (
-              <Link to={`/jugador/${player.id}`} className="flex items-center gap-2 text-primary-foreground/50 text-sm hover:text-primary-foreground transition-colors">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors relative"
+                >
+                  <Bell className="w-5 h-5" />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent animate-pulse-glow" />
+                  )}
+                </button>
+                
+                {showNotifications && (
+                  <div className="absolute right-0 mt-2 w-64 bg-card border border-border shadow-2xl rounded-xl overflow-hidden z-50">
+                    <div className="p-3 bg-primary/10 border-b border-border/50 flex items-center justify-between">
+                      <span className="text-sm font-bold font-heading">Notificaciones</span>
+                      {notifications.length > 0 && (
+                        <button onClick={() => setNotifications([])} className="text-xs text-primary hover:underline">Limpiar</button>
+                      )}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-2">
+                      {notifications.length === 0 ? (
+                        <div className="p-4 text-center text-muted-foreground text-sm">No hay notificaciones</div>
+                      ) : (
+                        notifications.map((n, i) => (
+                          <div key={i} className="p-2.5 text-sm hover:bg-white/5 rounded-lg mb-1 last:mb-0 transition-colors text-foreground">
+                            {n}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {player && (
+              <Link to={`/jugador/${player.id}`} className="flex items-center gap-2 text-muted-foreground text-sm hover:text-foreground transition-colors">
                 <PlayerAvatar name={player.full_name} avatarUrl={player.avatar_url} size="xs" />
-                {player.full_name} · <span className="font-semibold text-primary-foreground/80">{player.rating}</span>
+                {player.full_name} · <span className="font-semibold text-foreground/80">{player.rating}</span>
               </Link>
             )}
             {(player || isAdmin) ? (
               <button
                 onClick={logout}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-primary-foreground/50 hover:text-primary-foreground hover:bg-primary-foreground/5 transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-all"
               >
                 <LogOut className="w-4 h-4" />Salir
               </button>

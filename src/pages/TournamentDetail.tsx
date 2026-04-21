@@ -8,7 +8,11 @@ import { Users, ArrowLeft, Zap, XCircle, SkipForward, Trophy } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { DigitalScoresheet } from "@/components/DigitalScoresheet";
+import { LiveUmpire } from "@/components/LiveUmpire";
+import { authAction } from "@/lib/api";
 
 interface Tournament {
   id: string;
@@ -56,7 +60,7 @@ interface GroupStanding {
 
 export default function TournamentDetail() {
   const { id } = useParams<{ id: string }>();
-  const { isAdmin, adminToken } = useAuth();
+  const { player, playerToken, isAdmin, adminToken } = useAuth();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -66,6 +70,12 @@ export default function TournamentDetail() {
   // Admin: record match inline
   const [recordingMatchId, setRecordingMatchId] = useState<string | null>(null);
   const [matchSets, setMatchSets] = useState<SetScore[]>([{ p1: "", p2: "" }, { p1: "", p2: "" }, { p1: "", p2: "" }]);
+  
+  // Live Umpiring
+  const [liveUmpireMatch, setLiveUmpireMatch] = useState<Match | null>(null);
+
+  // Scoresheet Modal
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
 
   const fetchAll = async () => {
     if (!id) return;
@@ -103,7 +113,7 @@ export default function TournamentDetail() {
   };
 
   const handleRecordResult = async (match: Match) => {
-    if (!adminToken || !id) return;
+    if (!id || (!adminToken && !playerToken)) return;
     const validSets = matchSets.filter(s => s.p1 !== "" && s.p2 !== "");
     if (validSets.length < 2) { toast.error("Mínimo 2 sets"); return; }
     const set_scores = validSets.map(s => ({ p1: parseInt(s.p1), p2: parseInt(s.p2) }));
@@ -117,20 +127,90 @@ export default function TournamentDetail() {
       return;
     }
 
-    const data = await adminAction("record_match", {
-      tournament_id: id,
-      player1_id: match.player1_id,
-      player2_id: match.player2_id,
-      set_scores,
-      round: match.round,
-      group_name: match.group_name,
-      match_order: match.match_order,
-      existing_match_id: match.id,
-    }, adminToken);
-    if (data.error) { toast.error(data.error); return; }
+    let data;
+    if (isAdmin && adminToken) {
+      data = await adminAction("record_match", {
+        tournament_id: id,
+        player1_id: match.player1_id,
+        player2_id: match.player2_id,
+        set_scores,
+        round: match.round,
+        group_name: match.group_name,
+        match_order: match.match_order,
+        existing_match_id: match.id,
+      }, adminToken);
+    } else {
+      // Allow players to record match
+      data = await authAction("record_match", {
+        tournament_id: id,
+        player1_id: match.player1_id,
+        player2_id: match.player2_id,
+        set_scores,
+        round: match.round,
+        group_name: match.group_name,
+        match_order: match.match_order,
+        existing_match_id: match.id,
+        player_id: player?.id,
+        player_token: playerToken,
+      });
+    }
+
+    if (data?.error) { toast.error(data.error); return; }
     toast.success("Resultado registrado");
     setRecordingMatchId(null);
     setMatchSets([{ p1: "", p2: "" }, { p1: "", p2: "" }, { p1: "", p2: "" }]);
+    fetchAll();
+  };
+
+  const handleLiveMatchFinish = async (sets: {p1: number, p2: number}[], durationSeconds: number) => {
+    if (!id || !liveUmpireMatch || (!adminToken && !playerToken)) return;
+    
+    const isFinal = liveUmpireMatch.round?.toLowerCase() === "final";
+    const neededWins = isFinal ? 3 : 2;
+    let p1W = 0, p2W = 0;
+    sets.forEach(s => { if (s.p1 > s.p2) p1W++; else p2W++; });
+    
+    if (p1W < neededWins && p2W < neededWins) {
+      toast.error(`El partido finalizó sin un ganador claro. Alguien debe ganar ${neededWins} sets.`);
+      return;
+    }
+
+    toast.info("Guardando resultado...");
+    
+    let data;
+    if (isAdmin && adminToken) {
+      data = await adminAction("record_match", {
+        tournament_id: id,
+        player1_id: liveUmpireMatch.player1_id,
+        player2_id: liveUmpireMatch.player2_id,
+        set_scores: sets,
+        round: liveUmpireMatch.round,
+        group_name: liveUmpireMatch.group_name,
+        match_order: liveUmpireMatch.match_order,
+        existing_match_id: liveUmpireMatch.id,
+      }, adminToken);
+    } else {
+      data = await authAction("record_match", {
+        tournament_id: id,
+        player1_id: liveUmpireMatch.player1_id,
+        player2_id: liveUmpireMatch.player2_id,
+        set_scores: sets,
+        round: liveUmpireMatch.round,
+        group_name: liveUmpireMatch.group_name,
+        match_order: liveUmpireMatch.match_order,
+        existing_match_id: liveUmpireMatch.id,
+        player_id: player?.id,
+        player_token: playerToken,
+      });
+    }
+    
+    if (data?.error) { 
+      toast.error(data.error); 
+      return; 
+    }
+    
+    toast.success(`¡Partido registrado! Duración: ${Math.floor(durationSeconds/60)}m ${durationSeconds%60}s`);
+    setLiveUmpireMatch(null);
     fetchAll();
   };
 
@@ -198,7 +278,7 @@ export default function TournamentDetail() {
   const renderMatchCard = (m: Match) => {
     const setDetail = m.set_scores ? m.set_scores.map((s) => `${s.p1}-${s.p2}`).join(", ") : "";
     const isRecording = recordingMatchId === m.id;
-    const canRecord = isAdmin && !m.winner_id && m.player1_id && m.player2_id;
+    const canRecord = !!player && !m.winner_id && m.player1_id && m.player2_id;
     const isFinal = m.round?.toLowerCase() === "final";
     const maxSets = isFinal ? 5 : 3;
 
@@ -251,16 +331,28 @@ export default function TournamentDetail() {
           </div>
         )}
 
+        {m.winner_id && !isRecording && (
+          <div className="absolute inset-0 bg-transparent cursor-pointer z-0" onClick={() => setSelectedMatch(m)} />
+        )}
+
         {canRecord && !isRecording && (
-          <Button
-            size="sm" variant="outline" className="w-full mt-2 text-xs"
-            onClick={() => {
-              setRecordingMatchId(m.id);
-              setMatchSets(Array.from({ length: Math.min(maxSets, 3) }, () => ({ p1: "", p2: "" })));
-            }}
-          >
-            Registrar resultado
-          </Button>
+          <div className="mt-2 flex gap-2 relative z-10">
+            <Button
+              size="sm" variant="default" className="flex-1 text-xs font-bold"
+              onClick={() => setLiveUmpireMatch(m)}
+            >
+              Arbitrar en Vivo
+            </Button>
+            <Button
+              size="sm" variant="outline" className="flex-1 text-xs"
+              onClick={() => {
+                setRecordingMatchId(m.id);
+                setMatchSets(Array.from({ length: Math.min(maxSets, 3) }, () => ({ p1: "", p2: "" })));
+              }}
+            >
+              Subir Manual
+            </Button>
+          </div>
         )}
 
         {isRecording && (
@@ -474,6 +566,38 @@ export default function TournamentDetail() {
             </div>
           );
         })()}
+
+        {/* Digital Scoresheet Modal */}
+        {selectedMatch && (
+          <Dialog open={!!selectedMatch} onOpenChange={(open) => !open && setSelectedMatch(null)}>
+            <DialogContent className="sm:max-w-xl bg-transparent border-none shadow-none p-0">
+              <DialogTitle className="sr-only">Acta de Partido</DialogTitle>
+              <DialogDescription className="sr-only">Detalles del resultado del partido</DialogDescription>
+              <DigitalScoresheet
+                player1Name={playersMap[selectedMatch.player1_id || ""] || "TBD"}
+                player2Name={playersMap[selectedMatch.player2_id || ""] || "TBD"}
+                player1Score={selectedMatch.player1_score || 0}
+                player2Score={selectedMatch.player2_score || 0}
+                setScores={selectedMatch.set_scores || []}
+                winnerId={selectedMatch.winner_id}
+                p1Id={selectedMatch.player1_id || ""}
+                p2Id={selectedMatch.player2_id || ""}
+                matchDate={new Date().toISOString()} // A real implementation might use match.created_at if available
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Live Umpire Modal */}
+        {liveUmpireMatch && (
+          <LiveUmpire
+            player1Name={playersMap[liveUmpireMatch.player1_id || ""] || "Jugador 1"}
+            player2Name={playersMap[liveUmpireMatch.player2_id || ""] || "Jugador 2"}
+            maxSets={liveUmpireMatch.round?.toLowerCase() === "final" ? 5 : 3}
+            onFinishMatch={handleLiveMatchFinish}
+            onCancel={() => setLiveUmpireMatch(null)}
+          />
+        )}
       </div>
     </div>
   );

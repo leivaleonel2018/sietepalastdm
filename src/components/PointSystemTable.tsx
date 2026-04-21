@@ -29,7 +29,7 @@ export default function PointSystemTable() {
     <div className="space-y-6">
       <div className="glass-card overflow-hidden">
         <div className="nav-dark px-5 py-2.5">
-          <h3 className="text-primary-foreground font-heading font-semibold text-sm">Puntos por Instancia Alcanzada</h3>
+          <h3 className="text-foreground font-heading font-semibold text-sm">Puntos por Instancia Alcanzada</h3>
         </div>
         <table className="w-full">
           <thead>
