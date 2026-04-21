@@ -510,7 +510,7 @@ export default function PlayerProfile() {
               </div>
 
               {!editingAttributes ? (
-                <div className="h-[280px] sm:h-72 w-full relative flex items-center justify-center">
+                <div className="w-full max-w-[320px] aspect-square mx-auto relative flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="65%" data={playerAttributes}>
                       <PolarGrid stroke="hsl(var(--muted-foreground)/0.3)" />
