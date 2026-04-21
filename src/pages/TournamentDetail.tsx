@@ -556,18 +556,14 @@ export default function TournamentDetail() {
                   </Button>
                 </div>
               </div>
-              <div className="glass-card overflow-hidden relative min-h-[400px] h-auto w-full bg-black/20" ref={bracketRef}>
-                <motion.div 
-                  className="p-12 min-w-max min-h-max cursor-grab active:cursor-grabbing origin-center"
-                  drag
-                  dragConstraints={bracketRef}
-                  style={{ scale: zoom }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              <div className="glass-card p-6 overflow-x-auto hide-scrollbar relative bg-black/20" ref={bracketRef}>
+                <div 
+                  className="flex gap-12 min-w-max pb-4 items-stretch origin-top-left transition-transform duration-300"
+                  style={{ transform: `scale(${zoom})` }}
                 >
-                  <div className="flex gap-12 items-stretch pointer-events-none">
                     {orderedRounds.map((roundName, roundIdx) => (
-                      <div key={roundName} className="flex flex-col min-w-[300px]">
-                        <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-8 text-center bg-primary/10 py-2 rounded-md border border-primary/20 shadow-sm pointer-events-auto">{roundName}</h3>
+                      <div key={roundName} className="flex flex-col min-w-[280px]">
+                        <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-8 text-center bg-primary/10 py-2 rounded-md border border-primary/20 shadow-sm">{roundName}</h3>
                         <div className="flex flex-col justify-around flex-1 gap-8 relative">
                           {matchesByRound[roundName].sort((a, b) => (a.match_order || 0) - (b.match_order || 0)).map((match, mIdx) => {
                             const isFinished = !!match.winner_id;
@@ -601,8 +597,7 @@ export default function TournamentDetail() {
                         </div>
                       </div>
                     ))}
-                  </div>
-                </motion.div>
+                </div>
               </div>
             </div>
           );
