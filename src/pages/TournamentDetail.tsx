@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { adminAction } from "@/lib/api";
 import Navbar from "@/components/Navbar";
-import { Users, ArrowLeft, Zap, XCircle, SkipForward, Trophy } from "lucide-react";
+import { Users, ArrowLeft, Zap, XCircle, SkipForward, Trophy, ZoomIn, ZoomOut, Maximize, CircleDot } from "lucide-react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -76,6 +77,10 @@ export default function TournamentDetail() {
 
   // Scoresheet Modal
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+
+  // Zoom / Pan
+  const [zoom, setZoom] = useState(1);
+  const bracketRef = useRef<HTMLDivElement>(null);
 
   const fetchAll = async () => {
     if (!id) return;
@@ -281,9 +286,15 @@ export default function TournamentDetail() {
     const canRecord = !!player && !m.winner_id && m.player1_id && m.player2_id;
     const isFinal = m.round?.toLowerCase() === "final";
     const maxSets = isFinal ? 5 : 3;
+    const isLive = isRecording || liveUmpireMatch?.id === m.id;
 
     return (
-      <div key={m.id} className={`group relative overflow-hidden p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${isFinal ? "bg-gradient-to-br from-primary/20 via-background to-accent/10 border-primary/40" : "bg-card/80 backdrop-blur-md border-border/50 hover:border-primary/30"}`}>
+      <div key={m.id} className={`group relative overflow-hidden p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${isFinal ? "bg-gradient-to-br from-primary/20 via-background to-accent/10 border-primary/40" : "bg-card/80 backdrop-blur-md border-border/50 hover:border-primary/30"} ${isLive ? 'ring-2 ring-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : ''}`}>
+        {isLive && (
+          <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg flex items-center gap-1 z-20 animate-pulse">
+            <CircleDot className="w-2 h-2" /> LIVE
+          </div>
+        )}
         {/* Decorative elements */}
         <div className="absolute -right-4 -bottom-4 opacity-[0.03] pointer-events-none transform -rotate-12 group-hover:scale-110 transition-transform">
           <Trophy className="w-20 h-20" />
@@ -528,40 +539,70 @@ export default function TournamentDetail() {
 
           return (
             <div className="space-y-3 animate-slide-up stagger-3">
-              <h2 className="font-heading font-semibold text-sm text-foreground flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-primary" />
-                {groupNames.length > 0 ? "Fase Eliminatoria" : "Brackets del Torneo"}
-              </h2>
-              <div className="glass-card p-6 overflow-x-auto hide-scrollbar relative">
-                <div className="flex gap-12 min-w-max pb-4 items-stretch">
-                  {orderedRounds.map((roundName, roundIdx) => (
-                    <div key={roundName} className="flex flex-col min-w-[280px]">
-                      <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-6 text-center bg-primary/10 py-2 rounded-md border border-primary/20 shadow-sm">{roundName}</h3>
-                      <div className="flex flex-col justify-around flex-1 gap-6 relative">
-                        {matchesByRound[roundName].sort((a, b) => (a.match_order || 0) - (b.match_order || 0)).map((match, mIdx) => (
-                          <div key={match.id} className="relative group">
-                            {roundIdx < orderedRounds.length - 1 && (
-                              <div className={`absolute top-1/2 -right-8 w-8 border-t-2 border-primary/20 group-hover:border-primary/40 transition-colors z-0 ${mIdx % 2 === 0 ? "rounded-tr-lg" : "rounded-br-lg"}`} style={{ height: 'calc(50% + 1rem)', borderLeft: '2px solid hsl(var(--primary) / 0.2)', borderRight: '0' }}>
-                                {mIdx % 2 === 0 ? (
-                                  <div className="absolute top-0 right-0 w-2 h-2 rounded-full bg-primary/20 -translate-y-1/2 translate-x-1/2" />
-                                ) : (
-                                  <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-primary/20 translate-y-1/2 translate-x-1/2" />
-                                )}
-                              </div>
-                            )}
-                            {roundIdx > 0 && (
-                              <div className="absolute top-1/2 -left-8 w-8 h-[2px] bg-primary/20 z-0">
-                                <div className="absolute left-0 top-0 w-2 h-2 rounded-full bg-primary/20 -translate-y-1/2 -translate-x-1/2" />
-                              </div>
-                            )}
-                            
-                            {renderMatchCard(match)}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+              <div className="flex items-center justify-between">
+                <h2 className="font-heading font-semibold text-sm text-foreground flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-primary" />
+                  {groupNames.length > 0 ? "Fase Eliminatoria" : "Brackets del Torneo"}
+                </h2>
+                <div className="flex gap-1.5 bg-card/80 p-1 rounded-lg border border-border/50 backdrop-blur-md z-10">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setZoom(z => Math.max(z - 0.2, 0.5))}>
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setZoom(1)}>
+                    <Maximize className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setZoom(z => Math.min(z + 0.2, 2))}>
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
+              </div>
+              <div className="glass-card overflow-hidden relative h-[600px] bg-black/20" ref={bracketRef}>
+                <motion.div 
+                  className="p-12 min-w-max min-h-max cursor-grab active:cursor-grabbing origin-center"
+                  drag
+                  dragConstraints={bracketRef}
+                  style={{ scale: zoom }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                >
+                  <div className="flex gap-12 items-stretch pointer-events-none">
+                    {orderedRounds.map((roundName, roundIdx) => (
+                      <div key={roundName} className="flex flex-col min-w-[300px]">
+                        <h3 className="font-heading font-semibold text-xs text-primary uppercase tracking-wide mb-8 text-center bg-primary/10 py-2 rounded-md border border-primary/20 shadow-sm pointer-events-auto">{roundName}</h3>
+                        <div className="flex flex-col justify-around flex-1 gap-8 relative">
+                          {matchesByRound[roundName].sort((a, b) => (a.match_order || 0) - (b.match_order || 0)).map((match, mIdx) => {
+                            const isFinished = !!match.winner_id;
+                            
+                            return (
+                              <div key={match.id} className="relative group pointer-events-auto">
+                                {/* Connector Right (Outgoing to next round) */}
+                                {roundIdx < orderedRounds.length - 1 && (
+                                  <div className={`absolute top-1/2 -right-8 w-8 border-t-2 z-0 ${mIdx % 2 === 0 ? "rounded-tr-lg" : "rounded-br-lg"} transition-all duration-700 ease-in-out ${isFinished ? 'border-primary shadow-[0_0_15px_hsl(var(--primary)/0.4)]' : 'border-primary/20'}`} style={{ height: 'calc(50% + 1rem)', borderLeft: `2px solid ${isFinished ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.2)'}`, borderRight: '0' }}>
+                                    {mIdx % 2 === 0 ? (
+                                      <div className={`absolute top-0 right-0 w-2 h-2 rounded-full -translate-y-1/2 translate-x-1/2 transition-colors duration-500 ${isFinished ? 'bg-primary shadow-[0_0_10px_hsl(var(--primary))] animate-pulse' : 'bg-primary/20'}`} />
+                                    ) : (
+                                      <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full translate-y-1/2 translate-x-1/2 transition-colors duration-500 ${isFinished ? 'bg-primary shadow-[0_0_10px_hsl(var(--primary))] animate-pulse' : 'bg-primary/20'}`} />
+                                    )}
+                                  </div>
+                                )}
+                                {/* Connector Left (Incoming from previous round) */}
+                                {roundIdx > 0 && (() => {
+                                  const hasPlayers = !!(match.player1_id && match.player2_id);
+                                  return (
+                                    <div className={`absolute top-1/2 -left-8 w-8 h-[2px] z-0 transition-colors duration-700 ${hasPlayers ? 'bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.4)]' : 'bg-primary/20'}`}>
+                                      <div className={`absolute left-0 top-0 w-2 h-2 rounded-full -translate-y-1/2 -translate-x-1/2 transition-colors duration-500 ${hasPlayers ? 'bg-primary' : 'bg-primary/20'}`} />
+                                    </div>
+                                  );
+                                })()}
+                                
+                                {renderMatchCard(match)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
               </div>
             </div>
           );
