@@ -7,11 +7,12 @@ import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Swords, Check, X, Trophy, Calendar, TrendingUp, TrendingDown } from "lucide-react";
+import { Swords, Check, X, Trophy, Calendar, TrendingUp, TrendingDown, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { Plus } from "lucide-react";
 import { LiveUmpire } from "@/components/LiveUmpire";
+import { MatchChronicle } from "@/components/MatchChronicle";
 
 interface Player {
   id: string;
@@ -32,6 +33,7 @@ interface Challenge {
   rating_change_challenger: number | null;
   rating_change_challenged: number | null;
   created_at: string;
+  ai_chronicle: string | null;
 }
 
 interface SetScore { p1: string; p2: string }
@@ -177,6 +179,8 @@ export default function Challenges() {
     setLiveUmpireChallenge(null);
     fetchAll();
   };
+
+
 
   const pendingForMe = player ? challenges.filter(c => c.challenged_id === player.id && c.status === "pending") : [];
   const acceptedMine = player ? challenges.filter(c => c.status === "accepted") : [];
@@ -379,43 +383,59 @@ export default function Challenges() {
                 const ago = formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: es });
 
                 return (
-                  <div key={c.id} className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <PlayerAvatar player={challenger} size="w-7 h-7" />
-                        <Link to={`/jugador/${c.challenger_id}`} className={`text-sm hover:underline truncate ${challengerWon ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                          {getPlayerName(c.challenger_id)}
-                        </Link>
-                        {challengerWon && <Trophy className="w-3 h-3 text-primary flex-shrink-0" />}
-
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <span className={`font-heading font-bold text-sm ${challengerWon ? "text-primary" : "text-muted-foreground"}`}>{c.challenger_sets_won}</span>
-                          <span className="text-muted-foreground text-xs">-</span>
-                          <span className={`font-heading font-bold text-sm ${challengedWon ? "text-primary" : "text-muted-foreground"}`}>{c.challenged_sets_won}</span>
+                    <div key={c.id} className="p-4 rounded-xl bg-muted/30 hover:bg-muted/40 transition-all border border-border/50 group">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="flex -space-x-2">
+                            <PlayerAvatar player={challenger} size="w-8 h-8" />
+                            <PlayerAvatar player={challenged} size="w-8 h-8" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              <Link to={`/jugador/${c.challenger_id}`} className={`hover:underline truncate ${challengerWon ? "text-foreground font-bold" : "text-muted-foreground"}`}>
+                                {getPlayerName(c.challenger_id)}
+                              </Link>
+                              <span className="text-muted-foreground/50 text-[10px]">vs</span>
+                              <Link to={`/jugador/${c.challenged_id}`} className={`hover:underline truncate ${challengedWon ? "text-foreground font-bold" : "text-muted-foreground"}`}>
+                                {getPlayerName(c.challenged_id)}
+                              </Link>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {setDetail && <span className="text-[10px] text-muted-foreground font-mono bg-background/50 px-1.5 py-0.5 rounded border border-border/30">{setDetail}</span>}
+                              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+                                <Calendar className="w-2.5 h-2.5" /> {ago}
+                              </span>
+                            </div>
+                          </div>
                         </div>
 
-                        {challengedWon && <Trophy className="w-3 h-3 text-primary flex-shrink-0" />}
-                        <Link to={`/jugador/${c.challenged_id}`} className={`text-sm hover:underline truncate ${challengedWon ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                          {getPlayerName(c.challenged_id)}
-                        </Link>
-                        <PlayerAvatar player={challenged} size="w-7 h-7" />
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-heading font-black text-lg ${challengerWon ? "text-primary" : "text-muted-foreground/40"}`}>{c.challenger_sets_won}</span>
+                            <span className="text-muted-foreground/20">-</span>
+                            <span className={`font-heading font-black text-lg ${challengedWon ? "text-primary" : "text-muted-foreground/40"}`}>{c.challenged_sets_won}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            {c.rating_change_challenger != null && c.rating_change_challenger !== 0 && (
+                              <span className={`text-[10px] font-bold px-1 rounded flex items-center gap-0.5 ${c.rating_change_challenger > 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+                                {c.rating_change_challenger > 0 ? "+" : ""}{c.rating_change_challenger}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
+
+                      {/* AI Chronicle Display */}
+                      <MatchChronicle
+                        chronicle={c.ai_chronicle}
+                        matchId={c.id}
+                        type="challenge"
+                        isAdmin={isAdmin}
+                        adminToken={adminToken}
+                        onRegenerated={fetchAll}
+                        compact
+                      />
                     </div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <div className="flex items-center gap-2">
-                        {setDetail && <span className="text-xs text-muted-foreground">Sets: {setDetail}</span>}
-                        {c.rating_change_challenger != null && c.rating_change_challenger !== 0 && (
-                          <span className={`text-[10px] flex items-center gap-0.5 ${c.rating_change_challenger > 0 ? "text-green-600" : "text-red-500"}`}>
-                            {c.rating_change_challenger > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                            {c.rating_change_challenger > 0 ? "+" : ""}{c.rating_change_challenger}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Calendar className="w-2.5 h-2.5" /> {ago}
-                      </span>
-                    </div>
-                  </div>
                 );
               })}
             </div>

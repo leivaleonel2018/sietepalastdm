@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { toast } from "sonner";
 import { DigitalScoresheet } from "@/components/DigitalScoresheet";
 import { LiveUmpire } from "@/components/LiveUmpire";
+import { MatchChronicle } from "@/components/MatchChronicle";
 import { authAction } from "@/lib/api";
 
 interface Tournament {
@@ -44,6 +45,7 @@ interface Match {
   rating_change_p1: number | null;
   rating_change_p2: number | null;
   set_scores: Array<{p1: number, p2: number}> | null;
+  ai_chronicle: string | null;
 }
 
 interface SetScore { p1: string; p2: string }
@@ -344,6 +346,21 @@ export default function TournamentDetail() {
 
         {m.winner_id && !isRecording && (
           <div className="absolute inset-0 bg-transparent cursor-pointer z-0" onClick={() => setSelectedMatch(m)} />
+        )}
+
+        {/* AI Chronicle */}
+        {m.winner_id && !isRecording && (
+          <div className="relative z-10">
+            <MatchChronicle
+              chronicle={m.ai_chronicle}
+              matchId={m.id}
+              type="match"
+              isAdmin={isAdmin}
+              adminToken={adminToken}
+              onRegenerated={fetchAll}
+              compact
+            />
+          </div>
         )}
 
         {canRecord && !isRecording && (

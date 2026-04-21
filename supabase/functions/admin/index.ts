@@ -39,6 +39,116 @@ const PLACEMENT_POINTS: Record<string, number> = {
   "8vo": 13, "16vo": 10, "32vo": 8, "64vo": 6, "128vo": 4, grupo_perdido: -2,
 };
 
+// AI Chronicle Generation Helper
+async function generateChronicleForMatch(supabase: any, matchId: string, type: "match" | "challenge") {
+  try {
+    const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_KEY) return;
+
+    let player1Name = "", player2Name = "", winnerName = "", loserName = "";
+    let setsStr = "", ratingP1 = 0, ratingP2 = 0;
+    let ratingChangeWinner = 0, ratingChangeLoser = 0;
+    let roundInfo = "", tournamentName = "";
+    let wasComeback = false;
+    const table = type === "challenge" ? "challenges" : "matches";
+
+    if (type === "challenge") {
+      const { data: c } = await supabase.from("challenges").select(`*, challenger:players!challenger_id(full_name, rating), challenged:players!challenged_id(full_name, rating)`).eq("id", matchId).single();
+      if (!c) return;
+      player1Name = c.challenger.full_name;
+      player2Name = c.challenged.full_name;
+      ratingP1 = c.challenger.rating;
+      ratingP2 = c.challenged.rating;
+      const challengerWon = c.winner_id === c.challenger_id;
+      winnerName = challengerWon ? player1Name : player2Name;
+      loserName = challengerWon ? player2Name : player1Name;
+      ratingChangeWinner = challengerWon ? (c.rating_change_challenger || 0) : (c.rating_change_challenged || 0);
+      ratingChangeLoser = challengerWon ? (c.rating_change_challenged || 0) : (c.rating_change_challenger || 0);
+      const scores = (c.set_scores as any[] || []);
+      setsStr = scores.map((s: any) => `${s.p1}-${s.p2}`).join(", ");
+      // Detect comeback: lost first set but won the match
+      if (scores.length >= 2) {
+        const firstSetWinner = scores[0].p1 > scores[0].p2 ? c.challenger_id : c.challenged_id;
+        if (firstSetWinner !== c.winner_id) wasComeback = true;
+      }
+      roundInfo = "Desafío directo";
+    } else {
+      const { data: m } = await supabase.from("matches").select(`*, p1:players!player1_id(full_name, rating), p2:players!player2_id(full_name, rating)`).eq("id", matchId).single();
+      if (!m) return;
+      player1Name = m.p1.full_name;
+      player2Name = m.p2.full_name;
+      ratingP1 = m.p1.rating;
+      ratingP2 = m.p2.rating;
+      const p1Won = m.winner_id === m.player1_id;
+      winnerName = p1Won ? player1Name : player2Name;
+      loserName = p1Won ? player2Name : player1Name;
+      ratingChangeWinner = p1Won ? (m.rating_change_p1 || 0) : (m.rating_change_p2 || 0);
+      ratingChangeLoser = p1Won ? (m.rating_change_p2 || 0) : (m.rating_change_p1 || 0);
+      const scores = (m.set_scores as any[] || []);
+      setsStr = scores.map((s: any) => `${s.p1}-${s.p2}`).join(", ");
+      if (scores.length >= 2) {
+        const firstSetWinner = scores[0].p1 > scores[0].p2 ? m.player1_id : m.player2_id;
+        if (firstSetWinner !== m.winner_id) wasComeback = true;
+      }
+      roundInfo = m.round ? `Ronda: ${m.round}` : (m.group_name ? `${m.group_name}` : "");
+      if (m.tournament_id) {
+        const { data: t } = await supabase.from("tournaments").select("name").eq("id", m.tournament_id).single();
+        if (t) tournamentName = t.name;
+      }
+    }
+
+    // Build context-rich prompt
+    const ratingDiff = Math.abs(ratingP1 - ratingP2);
+    const isUpset = ratingDiff > 100 && ((ratingP1 > ratingP2 && winnerName !== player1Name) || (ratingP2 > ratingP1 && winnerName !== player2Name));
+    const lastSet = setsStr.split(", ").pop() || "";
+    const wasClose = lastSet.includes("12-10") || lastSet.includes("11-9") || lastSet.includes("13-11") || lastSet.includes("14-12");
+
+    let extraContext = "";
+    if (wasComeback) extraContext += "\n- ¡REMONTADA! El ganador perdió el primer set pero remontó.";
+    if (isUpset) extraContext += `\n- ¡SORPRESA! El favorito (con +${ratingDiff} pts de ventaja) fue derrotado.`;
+    if (wasClose) extraContext += "\n- El último set fue MUY ajustado, definido en la extensión.";
+    if (roundInfo.toLowerCase().includes("final")) extraContext += "\n- ¡Era la FINAL del torneo! Toda la presión estaba ahí.";
+
+    const prompt = `Eres un cronista deportivo de tenis de mesa del Club Siete Palmas TDM. Escribí una crónica épica MUY corta (máximo 3 frases) en español argentino informal para este partido:
+
+Jugador A: ${player1Name} (Rating: ${ratingP1})
+Jugador B: ${player2Name} (Rating: ${ratingP2})
+Resultados de los sets: ${setsStr}
+Ganador: ${winnerName}
+Cambio de rating del ganador: ${ratingChangeWinner > 0 ? "+" : ""}${ratingChangeWinner}
+${roundInfo ? `Contexto: ${roundInfo}` : ""}${tournamentName ? ` del torneo "${tournamentName}"` : ""}
+${extraContext}
+
+Reglas:
+- Máximo 3 frases cortas y directas
+- Usá vocabulario de ping pong: topspin, smash, bloqueo, servicio, defensa, slice, push, loop
+- Hacé que suene ÉPICO y emocionante
+- Mencioná los nombres de los jugadores (solo apellidos o primer nombre)
+- Si hubo remontada, destacala como momento heroico
+- Si fue una sorpresa, enfatizá el shock
+- NO uses comillas ni formato markdown
+- Escribí en español rioplatense`;
+
+    const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 250, temperature: 0.9 }
+      })
+    });
+
+    const aiData = await aiRes.json();
+    const chronicle = aiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (chronicle) {
+      await supabase.from(table).update({ ai_chronicle: chronicle }).eq("id", matchId);
+    }
+    return chronicle || null;
+  } catch {
+    return null; // Silently fail - chronicle is optional
+  }
+}
+
 async function checkAndAwardBadges(supabase: any, playerId: string) {
   const badgeDefs = [
     // Partidos Jugados
@@ -238,6 +348,11 @@ Deno.serve(async (req: Request) => {
       await checkAndAwardBadges(supabase, player1_id);
       await checkAndAwardBadges(supabase, player2_id);
 
+      // Auto-generate AI chronicle (fire-and-forget for match)
+      if (existing_match_id) {
+        generateChronicleForMatch(supabase, existing_match_id, "match").catch(() => {});
+      }
+
       // Auto-close tournament if this was the final
       if (round?.toLowerCase() === "final" && tournament_id) {
         await supabase.from("tournaments").update({ status: "finished" }).eq("id", tournament_id);
@@ -284,6 +399,10 @@ Deno.serve(async (req: Request) => {
         status: "completed", set_scores, challenger_sets_won: cSetsWon, challenged_sets_won: dSetsWon,
         winner_id, rating_change_challenger: rc1, rating_change_challenged: rc2,
       }).eq("id", challenge_id);
+
+      // Auto-generate AI chronicle
+      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => {});
+
       return respond({ success: true });
     }
 
@@ -338,6 +457,9 @@ Deno.serve(async (req: Request) => {
       
       await checkAndAwardBadges(supabase, challenge.challenger_id);
       await checkAndAwardBadges(supabase, challenge.challenged_id);
+
+      // Auto-generate AI chronicle
+      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => {});
       
       return respond({ success: true });
     }
@@ -647,6 +769,18 @@ Deno.serve(async (req: Request) => {
       const { error } = await supabase.from("players").update({ avatar_url: null }).eq("id", player_id);
       if (error) throw error;
       return respond({ success: true });
+    }
+
+    if (action === "generate_match_chronicle") {
+      const { match_id, type } = data; // type: "match" or "challenge"
+      if (!match_id) return respond({ error: "ID requerido" });
+
+      const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
+      if (!GEMINI_KEY) return respond({ error: "Configuración de IA faltante (GEMINI_API_KEY). Agregala en los secretos de Supabase." });
+
+      const chronicle = await generateChronicleForMatch(supabase, match_id, type || "match");
+      if (!chronicle) return respond({ error: "No se pudo generar la crónica" });
+      return respond({ success: true, chronicle });
     }
 
     if (action === "admin_delete_match") {
