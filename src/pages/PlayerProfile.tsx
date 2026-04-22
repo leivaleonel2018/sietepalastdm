@@ -100,6 +100,7 @@ export default function PlayerProfile() {
   const [loading, setLoading] = useState(true);
   const [earnedBadges, setEarnedBadges] = useState<BadgeInfo[]>([]);
   const [allBadges, setAllBadges] = useState<Badge[]>([]);
+  const [currentRank, setCurrentRank] = useState<number | null>(null);
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [pwForm, setPwForm] = useState({ current: "", newPw: "", confirm: "" });
@@ -112,9 +113,9 @@ export default function PlayerProfile() {
 
   // H2H state
   const [h2hStats, setH2hStats] = useState({ wins: 0, losses: 0, matches: [] as Match[] });
-  
+
   // Rating History state
-  const [ratingHistory, setRatingHistory] = useState<{match: number, rating: number}[]>([]);
+  const [ratingHistory, setRatingHistory] = useState<{ match: number, rating: number }[]>([]);
   const [bestRank, setBestRank] = useState<number | null>(null);
   const [worstRank, setWorstRank] = useState<number | null>(null);
 
@@ -128,20 +129,43 @@ export default function PlayerProfile() {
   useEffect(() => {
     if (!id) return;
     const fetchAll = async () => {
-      const [pRes, m1Res, m2Res, regsRes, cRes, pbRes, bRes] = await Promise.all([
-        supabase.from("players").select("*").eq("id", id).single(),
-        supabase.from("matches").select("*").eq("player1_id", id).order("created_at", { ascending: false }),
-        supabase.from("matches").select("*").eq("player2_id", id).order("created_at", { ascending: false }),
-        supabase.from("tournament_registrations").select("tournament_id").eq("player_id", id),
-        supabase.from("challenges").select("*").or(`challenger_id.eq.${id},challenged_id.eq.${id}`).order("created_at", { ascending: false }),
-        supabase.from("player_badges").select("*, badges(name, description, icon_url, type)").eq("player_id", id).order("created_at", { ascending: false }),
+      let actualId = id;
+      let pData: Player | null = null;
+      const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(id);
+
+      // If the URL has a friendly name instead of UUID, find the player first
+      if (!isUUID) {
+        const searchName = id.replace(/-/g, " ");
+        const { data } = await supabase.from("players").select("*").ilike("full_name", `${searchName}%`).limit(1).single();
+        if (data) {
+          pData = data as Player;
+          actualId = data.id;
+        } else {
+          setLoading(false);
+          return;
+        }
+      }
+
+      const [pRes, m1Res, m2Res, regsRes, cRes, pbRes, bRes, rankRes] = await Promise.all([
+        pData ? Promise.resolve({ data: pData }) : supabase.from("players").select("*").eq("id", actualId).single(),
+        supabase.from("matches").select("*").eq("player1_id", actualId).order("created_at", { ascending: false }),
+        supabase.from("matches").select("*").eq("player2_id", actualId).order("created_at", { ascending: false }),
+        supabase.from("tournament_registrations").select("tournament_id").eq("player_id", actualId),
+        supabase.from("challenges").select("*").or(`challenger_id.eq.${actualId},challenged_id.eq.${actualId}`).order("created_at", { ascending: false }),
+        supabase.from("player_badges").select("*, badges(name, description, icon_url, type)").eq("player_id", actualId).order("created_at", { ascending: false }),
         supabase.from("badges").select("*").order("created_at"),
+        supabase.from("players").select("id").order("rating", { ascending: false }),
       ]);
 
       setPlayer(pRes.data as Player | null);
       setChallenges((cRes.data || []) as unknown as Challenge[]);
       setEarnedBadges((pbRes.data || []) as unknown as BadgeInfo[]);
       setAllBadges((bRes.data || []) as Badge[]);
+
+      if (rankRes.data) {
+        const rankIndex = rankRes.data.findIndex((p: any) => p.id === actualId);
+        if (rankIndex !== -1) setCurrentRank(rankIndex + 1);
+      }
 
       const allMatches = [...(m1Res.data || []), ...(m2Res.data || [])] as unknown as Match[];
       allMatches.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -183,8 +207,8 @@ export default function PlayerProfile() {
         let currentRating = p.rating;
         let minRank = currentRating;
         let maxRank = currentRating;
-        const history: {match: number, rating: number}[] = [{ match: allMatches.length, rating: currentRating }];
-        
+        const history: { match: number, rating: number }[] = [{ match: allMatches.length, rating: currentRating }];
+
         for (let i = 0; i < allMatches.length; i++) {
           const m = allMatches[i];
           const isP1 = m.player1_id === id;
@@ -215,8 +239,8 @@ export default function PlayerProfile() {
 
       // Calculate H2H if logged in and not own profile
       if (loggedPlayer && loggedPlayer.id !== id) {
-        const h2hMatches = allMatches.filter(m => 
-          (m.player1_id === loggedPlayer.id && m.player2_id === id) || 
+        const h2hMatches = allMatches.filter(m =>
+          (m.player1_id === loggedPlayer.id && m.player2_id === id) ||
           (m.player2_id === loggedPlayer.id && m.player1_id === id)
         );
         let w = 0; let l = 0;
@@ -263,6 +287,21 @@ export default function PlayerProfile() {
     } catch (err) {
       console.error(err);
       toast.error("Error al generar el póster");
+    }
+  };
+
+  const handleCopyProfileLink = () => {
+    if (!player) return;
+    // Create a friendly URL slug
+    const slug = player.full_name.split(" ")[0].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const url = `${window.location.origin}/jugador/${slug}`;
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url)
+        .then(() => toast.success("¡Link de perfil copiado! Listo para Instagram."))
+        .catch(() => toast.error("No se pudo copiar el link"));
+    } else {
+      toast.error("Tu navegador no soporta copiar al portapapeles");
     }
   };
 
@@ -352,8 +391,17 @@ export default function PlayerProfile() {
     return <span className="text-3xl drop-shadow-md">{iconStr || "🎖️"}</span>;
   };
 
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!profileCardRef.current) return;
+    const rect = profileCardRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    profileCardRef.current.style.setProperty('--mouse-x', x.toString());
+    profileCardRef.current.style.setProperty('--mouse-y', y.toString());
+  };
+
   return (
-    <div className="min-h-screen bg-background ping-pong-pattern">
+    <div className={`min-h-screen bg-background ping-pong-pattern ${currentStreak >= 5 ? 'theme-immortal' : ''}`}>
       <Navbar />
       <div className="container mx-auto px-4 py-10 max-w-3xl">
         <Link to="/rankings" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
@@ -361,12 +409,16 @@ export default function PlayerProfile() {
         </Link>
 
         {/* Player Header */}
-        <div ref={profileCardRef} className="glass-card p-6 mb-6 animate-slide-up relative overflow-hidden">
+        <div
+          ref={profileCardRef}
+          className={`glass-card p-6 mb-6 animate-slide-up relative overflow-hidden ${currentRank && currentRank <= 3 ? 'hologram-card' : ''}`}
+          onMouseMove={currentRank && currentRank <= 3 ? handleMouseMove : undefined}
+        >
           {/* Subtle background glow for the poster */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none translate-x-1/2 -translate-y-1/2" />
           <div className="flex items-start gap-4 mb-4">
             <div className="relative group">
-              <PlayerAvatar name={player.full_name} avatarUrl={player.avatar_url} size="lg" />
+              <PlayerAvatar name={player.full_name} avatarUrl={player.avatar_url} size="lg" className={currentStreak >= 5 ? "avatar-immortal" : currentStreak >= 3 ? "avatar-fire" : ""} />
               {isOwnProfile && (
                 <label className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
                   <Camera className="w-5 h-5 text-white" />
@@ -377,10 +429,16 @@ export default function PlayerProfile() {
             <div className="flex-1">
               <div className="flex items-start justify-between">
                 <div>
-                  <h1 className="font-heading text-2xl font-bold text-foreground mb-1">{player.full_name}</h1>
-                  <p className="text-sm text-muted-foreground">
-                    Miembro desde {new Date(player.created_at).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
-                  </p>
+                  <h1 className={`font-heading text-2xl font-bold mb-1 ${currentRank && currentRank <= 3 ? "text-galactic" : currentStreak >= 5 ? "text-immortal" : currentStreak >= 3 ? "text-fire" : "text-foreground"}`}>
+                    {player.full_name}
+                  </h1>
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    {currentRank && currentRank <= 3 ? (
+                      <span className="text-[10px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 to-cyan-500 uppercase tracking-widest animate-pulse border border-fuchsia-500/30 px-2 py-0.5 rounded-full">Entidad Galáctica</span>
+                    ) : (
+                      `Miembro desde ${new Date(player.created_at).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}`
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   {canChallenge && (
@@ -391,11 +449,14 @@ export default function PlayerProfile() {
                   )}
                   {isOwnProfile && (
                     <button onClick={() => setShowPasswordForm(!showPasswordForm)} className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
-                      <Lock className="w-3 h-3" /> Cambiar clave
+                      <Lock className="w-3 h-3" /> Clave
                     </button>
                   )}
                   <button onClick={handleGeneratePoster} className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5 transition-all">
-                    <Share2 className="w-3 h-3" /> Compartir Stats
+                    <Camera className="w-3 h-3" /> Póster
+                  </button>
+                  <button onClick={handleCopyProfileLink} className="text-xs flex items-center gap-1 px-2 py-1 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-[0_0_15px_rgba(var(--primary-rgb,139,92,246),0.4)]">
+                    <Share2 className="w-3 h-3" /> Link Público
                   </button>
                 </div>
               </div>
@@ -415,7 +476,7 @@ export default function PlayerProfile() {
               </div>
             ))}
           </div>
-          
+
           <div className="flex items-center gap-4 mt-4">
             {currentStreak > 1 && <p className="text-sm font-medium text-orange-500 bg-orange-500/10 px-2 py-1 rounded border border-orange-500/20">🔥 Racha actual: {currentStreak} victorias</p>}
             {bestRank !== null && <p className="text-xs text-muted-foreground">📈 Mejor Ranking: <span className="text-foreground font-semibold">{bestRank}</span></p>}
@@ -587,7 +648,7 @@ export default function PlayerProfile() {
             <h2 className="font-heading font-semibold text-foreground mb-4 flex items-center gap-2">
               <MedalIcon className="w-5 h-5 text-primary" /> Vitrina y Logros
             </h2>
-            
+
             {/* Tournament champion badges */}
             {earnedBadges.filter(eb => eb.badges?.type === "tournament").length > 0 && (
               <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
@@ -622,11 +683,10 @@ export default function PlayerProfile() {
                 return (
                   <Tooltip key={badge.id}>
                     <TooltipTrigger asChild>
-                      <div className={`aspect-square rounded-2xl flex flex-col items-center justify-center text-center p-2 transition-all duration-300 ${
-                        isEarned
-                          ? "bg-card/80 border border-white/10 shadow-lg hover:scale-110 cursor-default relative overflow-hidden group hover:border-primary/50"
-                          : "bg-background/40 border border-border/20 opacity-30 grayscale cursor-help"
-                      }`}>
+                      <div className={`aspect-square rounded-2xl flex flex-col items-center justify-center text-center p-2 transition-all duration-300 ${isEarned
+                        ? "bg-card/80 border border-white/10 shadow-lg hover:scale-110 cursor-default relative overflow-hidden group hover:border-primary/50"
+                        : "bg-background/40 border border-border/20 opacity-30 grayscale cursor-help"
+                        }`}>
                         {isEarned && <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>}
                         <div className="mb-1 transition-transform duration-300 group-hover:-translate-y-1 scale-110">
                           {renderBadgeIcon(badge.icon_url)}

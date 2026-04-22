@@ -153,9 +153,9 @@ export default function Challenges() {
     fetchAll();
   };
 
-  const handleLiveMatchFinish = async (finishedSets: {p1: number, p2: number}[], durationSeconds: number) => {
+  const handleLiveMatchFinish = async (finishedSets: { p1: number, p2: number }[], durationSeconds: number) => {
     if (!liveUmpireChallenge) return;
-    
+
     let p1Wins = 0, p2Wins = 0;
     finishedSets.forEach(s => { if (s.p1 > s.p2) p1Wins++; else p2Wins++; });
     if (p1Wins < 2 && p2Wins < 2) {
@@ -173,9 +173,9 @@ export default function Challenges() {
     } else {
       toast.error("No autorizado"); return;
     }
-    
+
     if (result?.error) { toast.error(result.error); return; }
-    toast.success(`¡Partido registrado! Duración: ${Math.floor(durationSeconds/60)}m ${durationSeconds%60}s`);
+    toast.success(`¡Partido registrado! Duración: ${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`);
     setLiveUmpireChallenge(null);
     fetchAll();
   };
@@ -271,21 +271,21 @@ export default function Challenges() {
                         <div className="absolute right-0 top-0 opacity-5 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
                           <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path><path d="M2 12h20"></path></svg>
                         </div>
-                        
+
                         <div className="flex items-center justify-between mb-4 pb-3 border-b border-border/30">
                           <h3 className="font-heading font-bold text-sm flex items-center gap-2">
                             <Trophy className="w-4 h-4 text-primary" /> Mesa de Anotación
                           </h3>
                           <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-sm">Mejor de 3 Sets</span>
                         </div>
-                        
+
                         <div className="space-y-4 relative z-10">
                           {sets.map((set, i) => (
                             <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-black/20 border border-white/5 relative">
                               <div className="flex-shrink-0 w-full sm:w-16">
                                 <span className="text-xs font-bold uppercase tracking-wider text-primary/80">Set {i + 1}</span>
                               </div>
-                              
+
                               <div className="flex-1 flex items-center justify-between sm:justify-center gap-4">
                                 <div className="flex items-center gap-2 flex-1 sm:flex-none justify-end">
                                   <span className="text-xs sm:text-sm font-medium text-foreground/80 truncate max-w-[80px] sm:max-w-[120px] text-right" title={getPlayerName(c.challenger_id)}>
@@ -297,9 +297,9 @@ export default function Challenges() {
                                     className="w-14 h-12 text-center text-xl font-heading font-bold bg-background/50 border-primary/20 focus-visible:ring-primary text-primary shadow-inner"
                                   />
                                 </div>
-                                
+
                                 <span className="text-muted-foreground/30 font-bold text-lg">:</span>
-                                
+
                                 <div className="flex items-center gap-2 flex-1 sm:flex-none justify-start">
                                   <Input
                                     type="number" value={set.p2} min="0" max="99"
@@ -327,7 +327,7 @@ export default function Challenges() {
                               <Plus className="w-3 h-3 mr-1" /> Agregar 3er Set
                             </Button>
                           ) : <div />}
-                          
+
                           <div className="flex gap-2 w-full sm:w-auto">
                             <Button size="sm" variant="ghost" onClick={() => setRecordingId(null)} className="flex-1 sm:flex-none">Cancelar</Button>
                             <Button size="sm" onClick={() => submitResult(c.id)} className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shadow-primary/20">
@@ -374,7 +374,7 @@ export default function Challenges() {
           ) : (
             <div className="space-y-2">
               {allCompleted.map(c => {
-                const setScores = c.set_scores as Array<{p1: number; p2: number}> | null;
+                const setScores = c.set_scores as Array<{ p1: number; p2: number }> | null;
                 const setDetail = setScores ? setScores.map(s => `${s.p1}-${s.p2}`).join(", ") : "";
                 const challenger = getPlayer(c.challenger_id);
                 const challenged = getPlayer(c.challenged_id);
@@ -383,59 +383,59 @@ export default function Challenges() {
                 const ago = formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: es });
 
                 return (
-                    <div key={c.id} className="p-4 rounded-xl bg-muted/30 hover:bg-muted/40 transition-all border border-border/50 group">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="flex -space-x-2">
-                            <PlayerAvatar player={challenger} size="w-8 h-8" />
-                            <PlayerAvatar player={challenged} size="w-8 h-8" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-sm font-medium">
-                              <Link to={`/jugador/${c.challenger_id}`} className={`hover:underline truncate ${challengerWon ? "text-foreground font-bold" : "text-muted-foreground"}`}>
-                                {getPlayerName(c.challenger_id)}
-                              </Link>
-                              <span className="text-muted-foreground/50 text-[10px]">vs</span>
-                              <Link to={`/jugador/${c.challenged_id}`} className={`hover:underline truncate ${challengedWon ? "text-foreground font-bold" : "text-muted-foreground"}`}>
-                                {getPlayerName(c.challenged_id)}
-                              </Link>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {setDetail && <span className="text-[10px] text-muted-foreground font-mono bg-background/50 px-1.5 py-0.5 rounded border border-border/30">{setDetail}</span>}
-                              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
-                                <Calendar className="w-2.5 h-2.5" /> {ago}
-                              </span>
-                            </div>
-                          </div>
+                  <div key={c.id} className="p-4 rounded-xl bg-muted/30 hover:bg-muted/40 transition-all border border-border/50 group">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="flex -space-x-2">
+                          <PlayerAvatar player={challenger} size="w-8 h-8" />
+                          <PlayerAvatar player={challenged} size="w-8 h-8" />
                         </div>
-
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-heading font-black text-lg ${challengerWon ? "text-primary" : "text-muted-foreground/40"}`}>{c.challenger_sets_won}</span>
-                            <span className="text-muted-foreground/20">-</span>
-                            <span className={`font-heading font-black text-lg ${challengedWon ? "text-primary" : "text-muted-foreground/40"}`}>{c.challenged_sets_won}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Link to={`/jugador/${c.challenger_id}`} className={`hover:underline truncate ${challengerWon ? "text-foreground font-bold" : "text-muted-foreground"}`}>
+                              {getPlayerName(c.challenger_id)}
+                            </Link>
+                            <span className="text-muted-foreground/50 text-[10px]">vs</span>
+                            <Link to={`/jugador/${c.challenged_id}`} className={`hover:underline truncate ${challengedWon ? "text-foreground font-bold" : "text-muted-foreground"}`}>
+                              {getPlayerName(c.challenged_id)}
+                            </Link>
                           </div>
-                          <div className="flex gap-2">
-                            {c.rating_change_challenger != null && c.rating_change_challenger !== 0 && (
-                              <span className={`text-[10px] font-bold px-1 rounded flex items-center gap-0.5 ${c.rating_change_challenger > 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
-                                {c.rating_change_challenger > 0 ? "+" : ""}{c.rating_change_challenger}
-                              </span>
-                            )}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {setDetail && <span className="text-[10px] text-muted-foreground font-mono bg-background/50 px-1.5 py-0.5 rounded border border-border/30">{setDetail}</span>}
+                            <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+                              <Calendar className="w-2.5 h-2.5" /> {ago}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* AI Chronicle Display */}
-                      <MatchChronicle
-                        chronicle={c.ai_chronicle}
-                        matchId={c.id}
-                        type="challenge"
-                        isAdmin={isAdmin}
-                        adminToken={adminToken}
-                        onRegenerated={fetchAll}
-                        compact
-                      />
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-heading font-black text-lg ${challengerWon ? "text-primary" : "text-muted-foreground/40"}`}>{c.challenger_sets_won}</span>
+                          <span className="text-muted-foreground/20">-</span>
+                          <span className={`font-heading font-black text-lg ${challengedWon ? "text-primary" : "text-muted-foreground/40"}`}>{c.challenged_sets_won}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          {c.rating_change_challenger != null && c.rating_change_challenger !== 0 && (
+                            <span className={`text-[10px] font-bold px-1 rounded flex items-center gap-0.5 ${c.rating_change_challenger > 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+                              {c.rating_change_challenger > 0 ? "+" : ""}{c.rating_change_challenger}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* AI Chronicle Display */}
+                    <MatchChronicle
+                      chronicle={c.ai_chronicle}
+                      matchId={c.id}
+                      type="challenge"
+                      isAdmin={isAdmin}
+                      adminToken={adminToken}
+                      onRegenerated={fetchAll}
+                      compact
+                    />
+                  </div>
                 );
               })}
             </div>

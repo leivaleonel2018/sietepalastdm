@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { authAction } from "@/lib/api";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Swords } from "lucide-react";
 
 interface Player {
   id: string;
@@ -34,6 +37,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem("tdm_auth", JSON.stringify(auth));
   }, [auth]);
+
+  // Request browser notification permission
+  useEffect(() => {
+    if (auth.player && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, [auth.player]);
+
+  // Supabase Real-Time Subscriptions for Challenges
+  useEffect(() => {
+    if (!auth.player) return;
+
+    const channel = supabase
+      .channel('realtime-challenges')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'challenges',
+          filter: `challenged_id=eq.${auth.player.id}`
+        },
+        async (payload) => {
+          // Fetch challenger name
+          const { data: challenger } = await supabase.from("players").select("full_name").eq("id", payload.new.challenger_id).single();
+          const name = challenger?.full_name || "Alguien";
+          
+          // In-app toast
+          toast.message(`¡NUEVO DESAFÍO! 🔔`, {
+            description: `${name} te ha desafiado a un partido.`,
+            icon: <Swords className="w-5 h-5 text-primary" />,
+            duration: 10000,
+            action: {
+              label: "Ver",
+              onClick: () => window.location.href = "/desafios"
+            }
+          });
+          
+          // Native OS push notification
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("¡Nuevo Desafío en TDM!", {
+              body: `${name} te ha desafiado a un partido.`,
+              icon: "/favicon.ico"
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [auth.player]);
 
   const loginPlayer = async (dni: string, password: string) => {
     try {

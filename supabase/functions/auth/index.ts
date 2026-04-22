@@ -1,4 +1,7 @@
+// @ts-ignore - Supabase edge functions use Deno, which causes local TS warnings
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+// @ts-ignore
+declare const Deno: any;
 const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-token" };
 
 const ADMIN_USERNAME = "leiva leonel";
@@ -169,7 +172,7 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   const { count: matchCount } = await supabase.from("matches").select("id", { count: "exact", head: true }).or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`);
   const { count: challengeMatchCount } = await supabase.from("challenges").select("id", { count: "exact", head: true }).or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed");
   const totalPlayed = (matchCount || 0) + (challengeMatchCount || 0);
-  
+
   const { count: matchWins } = await supabase.from("matches").select("id", { count: "exact", head: true }).eq("winner_id", playerId);
   const { count: challengeWins } = await supabase.from("challenges").select("id", { count: "exact", head: true }).eq("winner_id", playerId).eq("status", "completed");
   const totalWins = (matchWins || 0) + (challengeWins || 0);
@@ -179,7 +182,7 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   const { data: recentMatches } = await supabase.from("matches").select("winner_id").or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`).order("created_at", { ascending: false }).limit(5);
   const { data: recentChallenges } = await supabase.from("challenges").select("winner_id").or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed").order("created_at", { ascending: false }).limit(5);
   const allRecent = [...(recentMatches || []), ...(recentChallenges || [])].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-  
+
   let streak = 0;
   for (const r of allRecent) { if (r.winner_id === playerId) streak++; else break; }
 
@@ -203,7 +206,7 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
@@ -330,7 +333,7 @@ Deno.serve(async (req) => {
       await checkAndAwardBadges(supabase, challenge.challenged_id);
 
       // Auto-generate AI chronicle (fire-and-forget)
-      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => {});
+      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => { });
 
       return respond({ success: true });
     }

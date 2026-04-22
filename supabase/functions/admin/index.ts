@@ -193,7 +193,7 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   const { count: matchCount } = await supabase.from("matches").select("id", { count: "exact", head: true }).or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`);
   const { count: challengeMatchCount } = await supabase.from("challenges").select("id", { count: "exact", head: true }).or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed");
   const totalPlayed = (matchCount || 0) + (challengeMatchCount || 0);
-  
+
   const { count: matchWins } = await supabase.from("matches").select("id", { count: "exact", head: true }).eq("winner_id", playerId);
   const { count: challengeWins } = await supabase.from("challenges").select("id", { count: "exact", head: true }).eq("winner_id", playerId).eq("status", "completed");
   const totalWins = (matchWins || 0) + (challengeWins || 0);
@@ -203,7 +203,7 @@ async function checkAndAwardBadges(supabase: any, playerId: string) {
   const { data: recentMatches } = await supabase.from("matches").select("winner_id, created_at").or(`player1_id.eq.${playerId},player2_id.eq.${playerId}`).order("created_at", { ascending: false }).limit(25);
   const { data: recentChallenges } = await supabase.from("challenges").select("winner_id, created_at").or(`challenger_id.eq.${playerId},challenged_id.eq.${playerId}`).eq("status", "completed").order("created_at", { ascending: false }).limit(25);
   const allRecent = [...(recentMatches || []), ...(recentChallenges || [])].sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-  
+
   let streak = 0;
   for (const r of allRecent) { if (r.winner_id === playerId) streak++; else break; }
 
@@ -350,7 +350,7 @@ Deno.serve(async (req: Request) => {
 
       // Auto-generate AI chronicle (fire-and-forget for match)
       if (existing_match_id) {
-        generateChronicleForMatch(supabase, existing_match_id, "match").catch(() => {});
+        generateChronicleForMatch(supabase, existing_match_id, "match").catch(() => { });
       }
 
       // Auto-close tournament if this was the final
@@ -366,7 +366,7 @@ Deno.serve(async (req: Request) => {
         // Award champion badge
         const { data: champBadge } = await supabase.from("badges").select("id").eq("name", "Campeón de torneo").single();
         if (champBadge) {
-          await supabase.from("player_badges").insert({ player_id: winner_id, badge_id: champBadge.id, tournament_id }).catch(() => {});
+          await supabase.from("player_badges").insert({ player_id: winner_id, badge_id: champBadge.id, tournament_id }).catch(() => { });
         }
       }
 
@@ -401,7 +401,7 @@ Deno.serve(async (req: Request) => {
       }).eq("id", challenge_id);
 
       // Auto-generate AI chronicle
-      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => {});
+      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => { });
 
       return respond({ success: true });
     }
@@ -454,13 +454,13 @@ Deno.serve(async (req: Request) => {
         status: "completed", set_scores, challenger_sets_won: cSetsWon, challenged_sets_won: dSetsWon,
         winner_id, rating_change_challenger: rc1, rating_change_challenged: rc2,
       }).eq("id", challenge_id);
-      
+
       await checkAndAwardBadges(supabase, challenge.challenger_id);
       await checkAndAwardBadges(supabase, challenge.challenged_id);
 
       // Auto-generate AI chronicle
-      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => {});
-      
+      generateChronicleForMatch(supabase, challenge_id, "challenge").catch(() => { });
+
       return respond({ success: true });
     }
 
@@ -473,49 +473,49 @@ Deno.serve(async (req: Request) => {
 
     if (action === "generate_bracket") {
       const { tournament_id } = data;
-      
+
       const { data: tournament } = await supabase.from("tournaments").select("format").eq("id", tournament_id).single();
       const format = tournament?.format || "single_elimination";
-      
+
       const { data: regs } = await supabase.from("tournament_registrations").select("player_id, players(id, full_name, rating)").eq("tournament_id", tournament_id);
       if (!regs || regs.length < 2) return respond({ error: "Se necesitan al menos 2 jugadores" });
 
       const sorted = regs.map((r: any) => r.players).filter(Boolean).sort((a: any, b: any) => b.rating - a.rating);
       const n = sorted.length;
       const matches: any[] = [];
-      
+
       if (format === "groups_then_elimination" || format === "groups") {
-         // Generate groups of max 3
-         const numGroups = Math.ceil(n / 3);
-         const groups: any[][] = Array.from({length: numGroups}, () => []);
-         
-         // Snake draft
-         let dir = 1;
-         let g = 0;
-         for (const p of sorted) {
-           groups[g].push(p);
-           g += dir;
-           if (g === numGroups) { g = numGroups - 1; dir = -1; }
-           else if (g === -1) { g = 0; dir = 1; }
-         }
-         
-         // Generate matches for each group
-         for (let i = 0; i < numGroups; i++) {
-           const groupName = `Grupo ${String.fromCharCode(65 + i)}`;
-           const groupPlayers = groups[i];
-           let matchOrder = 1;
-           for (let p1Idx = 0; p1Idx < groupPlayers.length; p1Idx++) {
-             for (let p2Idx = p1Idx + 1; p2Idx < groupPlayers.length; p2Idx++) {
-                matches.push({
-                  tournament_id,
-                  player1_id: groupPlayers[p1Idx].id,
-                  player2_id: groupPlayers[p2Idx].id,
-                  group_name: groupName,
-                  match_order: matchOrder++,
-                });
-             }
-           }
-         }
+        // Generate groups of max 3
+        const numGroups = Math.ceil(n / 3);
+        const groups: any[][] = Array.from({ length: numGroups }, () => []);
+
+        // Snake draft
+        let dir = 1;
+        let g = 0;
+        for (const p of sorted) {
+          groups[g].push(p);
+          g += dir;
+          if (g === numGroups) { g = numGroups - 1; dir = -1; }
+          else if (g === -1) { g = 0; dir = 1; }
+        }
+
+        // Generate matches for each group
+        for (let i = 0; i < numGroups; i++) {
+          const groupName = `Grupo ${String.fromCharCode(65 + i)}`;
+          const groupPlayers = groups[i];
+          let matchOrder = 1;
+          for (let p1Idx = 0; p1Idx < groupPlayers.length; p1Idx++) {
+            for (let p2Idx = p1Idx + 1; p2Idx < groupPlayers.length; p2Idx++) {
+              matches.push({
+                tournament_id,
+                player1_id: groupPlayers[p1Idx].id,
+                player2_id: groupPlayers[p2Idx].id,
+                group_name: groupName,
+                match_order: matchOrder++,
+              });
+            }
+          }
+        }
       } else {
         // Single elimination logic
         let sz = 1;
@@ -555,7 +555,7 @@ Deno.serve(async (req: Request) => {
 
       const groupMatches = currentMatches.filter((m: any) => m.group_name);
       const elimMatches = currentMatches.filter((m: any) => !m.group_name);
-      
+
       let winners: string[] = [];
       let nextRoundName = "";
       const nextMatches: any[] = [];
@@ -564,10 +564,10 @@ Deno.serve(async (req: Request) => {
         // Transition from groups to elimination
         const unfinishedGroups = groupMatches.filter((m: any) => !m.winner_id);
         if (unfinishedGroups.length > 0) return respond({ error: "Hay partidos de grupo sin resultado" });
-        
+
         let firsts: string[] = [];
         let seconds: string[] = [];
-        
+
         // Calculate standings and take top 2 from each group
         const groupNames = [...new Set(groupMatches.map((m: any) => m.group_name))];
         for (const gName of groupNames) {
@@ -582,23 +582,23 @@ Deno.serve(async (req: Request) => {
             // Need to handle tie-breakers perfectly, but points is a good start.
             return { id, points };
           }).sort((a, b) => b.points - a.points);
-          
+
           if (stats[0]) firsts.push(stats[0].id);
           if (stats[1]) seconds.push(stats[1].id);
         }
-        
+
         // Shift seconds by 1 to prevent playing own group in first elimination round
-        let shiftedSeconds = [];
+        let shiftedSeconds: string[] = [];
         if (seconds.length > 0) {
-           shiftedSeconds = [...seconds.slice(1), seconds[0]];
+          shiftedSeconds = [...seconds.slice(1), seconds[0]];
         }
-        
+
         let allAdvancing = [...firsts, ...shiftedSeconds];
-        
+
         let n = allAdvancing.length;
         let sz = 1;
         while (sz < n) sz *= 2;
-        
+
         const seeded: (string | null)[] = new Array(sz).fill(null);
         for (let i = 0; i < n; i++) seeded[i] = allAdvancing[i];
 
@@ -608,12 +608,12 @@ Deno.serve(async (req: Request) => {
         for (let i = 0; i < sz / 2; i++) {
           const p1 = seeded[i], p2 = seeded[sz - 1 - i];
           if (p1 || p2) {
-             nextMatches.push({
-                tournament_id, player1_id: p1 || null, player2_id: p2 || null,
-                round: nextRoundName, match_order: i + 1,
-                ...(p1 && !p2 ? { winner_id: p1, player1_score: 2, player2_score: 0 } : {}),
-                ...(!p1 && p2 ? { winner_id: p2, player1_score: 0, player2_score: 2 } : {}),
-             });
+            nextMatches.push({
+              tournament_id, player1_id: p1 || null, player2_id: p2 || null,
+              round: nextRoundName, match_order: i + 1,
+              ...(p1 && !p2 ? { winner_id: p1, player1_score: 2, player2_score: 0 } : {}),
+              ...(!p1 && p2 ? { winner_id: p2, player1_score: 0, player2_score: 2 } : {}),
+            });
           }
         }
       } else {
@@ -629,7 +629,7 @@ Deno.serve(async (req: Request) => {
         winners = latestMatches.map((m: any) => m.winner_id).filter(Boolean);
         const rn: Record<number, string> = { 1: "Final", 2: "Final", 4: "Semifinal", 8: "Cuartos", 16: "Octavos" };
         nextRoundName = rn[winners.length] || `Ronda de ${winners.length}`;
-        
+
         for (let i = 0; i < winners.length; i += 2) {
           if (i + 1 < winners.length) {
             nextMatches.push({
