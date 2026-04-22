@@ -169,6 +169,20 @@ export default function Index() {
   const [playerStreaks, setPlayerStreaks] = useState<Record<string, number>>({});
   const [mvpPlayer, setMvpPlayer] = useState<Player | null>(null);
 
+  // User Dashboard State
+  const [userStreak, setUserStreak] = useState<number>(0);
+  const [userPendingChallenges, setUserPendingChallenges] = useState<number>(0);
+  const [userNextMatch, setUserNextMatch] = useState<{ id: string, round: string | null, tournament_id: string } | null>(null);
+
+  // Parallax State
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const animatedPlayers = useCountUp(totalPlayers);
   const animatedMatches = useCountUp(totalMatches);
 
@@ -291,7 +305,33 @@ export default function Index() {
       setActiveTournament(null);
       setBracketMatches([]);
     }
-  }, []);
+
+    // User specific dashboard data
+    if (player?.id) {
+      const [challengesRes, myMatchesRes, nextMatchRes] = await Promise.all([
+        supabase.from("challenges").select("id", { count: "exact", head: true }).eq("challenged_id", player.id).eq("status", "pending"),
+        supabase.from("matches").select("winner_id").or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`).not("winner_id", "is", null).order("created_at", { ascending: false }).limit(20),
+        supabase.from("matches").select("id, round, tournament_id").or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`).is("winner_id", null).order("created_at", { ascending: true }).limit(1)
+      ]);
+      
+      setUserPendingChallenges(challengesRes.count || 0);
+      
+      if (nextMatchRes.data && nextMatchRes.data.length > 0) {
+        setUserNextMatch(nextMatchRes.data[0] as any);
+      } else {
+        setUserNextMatch(null);
+      }
+
+      let streak = 0;
+      if (myMatchesRes.data) {
+        for (const m of myMatchesRes.data) {
+          if (m.winner_id === player.id) streak++;
+          else break;
+        }
+      }
+      setUserStreak(streak);
+    }
+  }, [player?.id]);
 
   useEffect(() => {
     fetchData();
@@ -312,19 +352,35 @@ export default function Index() {
     { icon: <Star className="w-5 h-5" />, title: "Comunidad", desc: "Competí con jugadores de tu nivel en un ambiente recreativo.", color: "text-accent-foreground", link: null },
   ];
 
-  // Ticker items from recent matches
-  const tickerItems = Object.keys(playersMap).length === 0 ? [] : recentMatches
-    .filter(m => m.winner_id && m.player1_id && m.player2_id && playersMap[m.player1_id] && playersMap[m.player2_id])
-    .slice(0, 5)
-    .map(m => {
-      const winner = playersMap[m.winner_id!];
-      const loserId = m.winner_id === m.player1_id ? m.player2_id! : m.player1_id!;
-      const loser = playersMap[loserId];
-      const score = `${m.player1_score ?? 0}-${m.player2_score ?? 0}`;
-      let ago = "";
-      try { ago = formatDistanceToNow(new Date(m.created_at), { addSuffix: true, locale: es }); } catch { ago = ""; }
-      return `${winner.full_name.split(" ")[0]} venció a ${loser.full_name.split(" ")[0]} ${score}${ago ? " · " + ago : ""}`;
+  // Generate Community Milestones / Ticker Items
+  const tickerItems: React.ReactNode[] = [];
+  
+  if (Object.keys(playersMap).length > 0) {
+    if (topPlayers.length > 0) {
+      tickerItems.push(<><span className="text-yellow-500">⭐</span> @{topPlayers[0].full_name.split(' ')[0]} lidera el ranking con {topPlayers[0].rating} pts</>);
+    }
+
+    Object.entries(playerStreaks).forEach(([id, streak]) => {
+      if (streak >= 2 && playersMap[id]) {
+        tickerItems.push(<><span className="text-orange-500 animate-pulse">🔥</span> @{playersMap[id].full_name.split(' ')[0]} está imparable: racha de {streak} victorias</>);
+      }
     });
+
+    recentMatches
+      .filter(m => m.winner_id && m.player1_id && m.player2_id && playersMap[m.player1_id] && playersMap[m.player2_id])
+      .slice(0, 4)
+      .forEach(m => {
+        const winner = playersMap[m.winner_id!];
+        const loserId = m.winner_id === m.player1_id ? m.player2_id! : m.player1_id!;
+        const loser = playersMap[loserId];
+        const score = `${m.player1_score ?? 0}-${m.player2_score ?? 0}`;
+        tickerItems.push(<><span className="text-primary">🏓</span> @{winner.full_name.split(" ")[0]} venció a @{loser.full_name.split(" ")[0]} {score}</>);
+      });
+      
+    if (totalPlayers && totalPlayers > 0) {
+       tickerItems.push(<><span className="text-accent">🚀</span> La comunidad creció a {totalPlayers} jugadores activos</>);
+    }
+  }
 
   const PlayerAvatar = ({ p, size = "w-8 h-8" }: { p: Player | undefined; size?: string }) => {
     const name = p?.full_name || "?";
@@ -339,21 +395,44 @@ export default function Index() {
       </div>
     );
   };
+  
+  const handleMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    e.currentTarget.style.setProperty('--mouse-x', x.toString());
+    e.currentTarget.style.setProperty('--mouse-y', y.toString());
+  };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
+    <div className="min-h-screen bg-background relative overflow-x-hidden">
+      {/* Animated Nebula Background */}
+      <div className="particles-bg">
+        <div className="nebula-glow nebula-1"></div>
+        <div className="nebula-glow nebula-2"></div>
+        <div className="nebula-glow nebula-3"></div>
+        <div className="dust-particles"></div>
+      </div>
+      
+      <div className="relative z-10">
+        <Navbar />
 
-      {/* Hero – 2-col grid */}
-      <section className="hero-gradient border-b border-border/10 relative overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-primary/5 animate-float" />
-          <div className="absolute bottom-10 left-10 w-32 h-32 rounded-full bg-accent/5 animate-float stagger-2" />
+        {/* Hero – 2-col grid */}
+        <section className="hero-gradient border-b border-border/10 relative overflow-hidden">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-primary/5 animate-float" style={{ transform: `translateY(${scrollY * 0.4}px)` }} />
+          <div className="absolute bottom-10 left-10 w-32 h-32 rounded-full bg-accent/5 animate-float stagger-2" style={{ transform: `translateY(${scrollY * -0.2}px)` }} />
         </div>
 
         <div className="container mx-auto px-4 py-20 md:py-28 relative grid md:grid-cols-2 gap-8 items-center">
           {/* Left – text */}
-          <div className="animate-slide-up">
+          <div 
+            className="animate-slide-up"
+            style={{ 
+              transform: `translateY(${scrollY * 0.15}px)`,
+              opacity: Math.max(0, 1 - scrollY / 600)
+            }}
+          >
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium mb-4">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               Temporada 2026 activa
@@ -404,13 +483,75 @@ export default function Index() {
           </div>
 
           {/* Right – paddle illustration (hidden on mobile) */}
-          <div className="hidden md:flex items-center justify-center animate-slide-up stagger-2">
+          <div 
+            className="hidden md:flex items-center justify-center animate-slide-up stagger-2"
+            style={{ 
+              transform: `translateY(${scrollY * 0.25}px) rotate(${scrollY * 0.05}deg)`,
+              opacity: Math.max(0, 1 - scrollY / 700)
+            }}
+          >
             <div className="w-72 h-72 lg:w-80 lg:h-80">
               <PaddleIllustration />
             </div>
           </div>
         </div>
       </section>
+
+      {/* User Dashboard (Logged In) */}
+      {player && (
+        <ScrollReveal direction="up" delay={0.1}>
+          <div className="container mx-auto px-4 -mt-8 relative z-20">
+            <div className="glass-card p-6 flex flex-col md:flex-row items-center justify-between gap-6 bg-card border-primary/20 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-heading text-lg font-bold text-foreground">Tu Estado</h3>
+                  <p className="text-sm text-muted-foreground">Resumen de tu actividad reciente</p>
+                </div>
+              </div>
+              
+              <div className="flex flex-wrap items-center justify-center md:justify-end gap-6 md:gap-8 w-full md:w-auto">
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Racha Actual</span>
+                  <span className="font-heading text-xl font-bold flex items-center gap-1">
+                    {userStreak > 0 ? <><Flame className="w-5 h-5 text-orange-500 animate-pulse" /> {userStreak} Victorias</> : <span className="text-muted-foreground">0 Victorias</span>}
+                  </span>
+                </div>
+                
+                <div className="w-px h-10 bg-border hidden md:block"></div>
+                
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Desafíos</span>
+                  <Link to="/desafios" className="font-heading text-xl font-bold flex items-center gap-1 hover:text-primary transition-colors">
+                    {userPendingChallenges > 0 ? (
+                      <><span className="text-destructive flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-destructive animate-pulse"></span> {userPendingChallenges}</span> Pendientes</>
+                    ) : (
+                      <span className="text-muted-foreground text-lg">Al día</span>
+                    )}
+                  </Link>
+                </div>
+
+                <div className="w-px h-10 bg-border hidden md:block"></div>
+
+                <div className="flex flex-col items-center md:items-start">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Próximo Partido</span>
+                  {userNextMatch ? (
+                    <Link to={`/torneo/${userNextMatch.tournament_id}`} className="font-heading text-sm font-bold flex items-center gap-1.5 hover:bg-primary/20 transition-colors bg-primary/10 text-primary px-4 py-1.5 rounded-full border border-primary/20">
+                      <Swords className="w-4 h-4" /> Torneo {userNextMatch.round ? `(${userNextMatch.round})` : ''}
+                    </Link>
+                  ) : (
+                    <span className="font-heading text-sm font-bold text-muted-foreground flex items-center gap-1 py-1.5">
+                      Ninguno programado
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </ScrollReveal>
+      )}
 
       {/* Features – interactive cards */}
       <section className="container mx-auto px-4 py-14">
@@ -443,23 +584,22 @@ export default function Index() {
           })}
         </div>
 
-        {/* Activity Ticker - ESPN Style */}
+        {/* Achievements Ticker - eSports Style */}
         {tickerItems.length > 0 && (
           <ScrollReveal direction="up" delay={0.2}>
             <div className="mb-14 overflow-hidden rounded-xl bg-card border border-border shadow-lg flex group">
               <div className="bg-primary px-4 py-3 flex items-center justify-center relative overflow-hidden flex-shrink-0 z-10">
                 <div className="absolute inset-0 bg-white/20 animate-pulse-glow" />
                 <span className="font-heading font-bold text-primary-foreground text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
-                  <Activity className="w-4 h-4" /> Últimos Resultados
+                  <Activity className="w-4 h-4" /> Comunidad
                 </span>
               </div>
               <div className="flex-1 overflow-hidden relative flex items-center bg-card/50">
                 <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-card to-transparent z-10" />
                 <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card to-transparent z-10" />
-                <div className="flex gap-12 animate-marquee group-hover:[animation-play-state:paused] whitespace-nowrap px-4">
+                <div className="flex gap-8 animate-marquee group-hover:[animation-play-state:paused] whitespace-nowrap px-4 py-2">
                   {[...tickerItems, ...tickerItems, ...tickerItems].map((t, i) => (
-                    <span key={i} className="text-sm font-medium text-foreground inline-flex items-center gap-3">
-                      <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+                    <span key={i} className="text-sm font-medium text-foreground inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-muted/40 border border-border/50 hover:bg-muted/80 transition-colors">
                       {t}
                     </span>
                   ))}
@@ -552,7 +692,8 @@ export default function Index() {
                         <Link
                           key={p.id}
                           to={`/jugador/${p.id}`}
-                          className={`glass-card flex flex-col items-center px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "py-6 border-yellow-500/30 bg-yellow-500/5 shadow-md z-10" : rank === 2 ? "py-4" : "py-3"}`}
+                          className={`glass-card hologram-card flex flex-col items-center px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "py-6 border-yellow-500/30 bg-yellow-500/5 shadow-md z-10" : rank === 2 ? "py-4" : "py-3"}`}
+                          onMouseMove={handleMouseMove}
                         >
                           {isFirst && <Crown className="w-5 h-5 text-yellow-500 mb-1" />}
                           <PlayerAvatar p={p} size={isFirst ? "w-16 h-16" : "w-12 h-12"} />
@@ -772,39 +913,63 @@ export default function Index() {
               <p className="text-muted-foreground/60 text-sm mt-1">Las noticias del club aparecerán acá.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {news.map((item, i) => {
-                const isFeatured = news.length >= 3 && i === 0;
-                return (
-                  <Link
-                    key={item.id}
-                    to={`/noticia/${item.id}`}
-                    className={`glass-card overflow-hidden animate-slide-up hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group block ${isFeatured ? "md:col-span-2" : ""}`}
-                    style={{ animationDelay: `${i * 0.1}s` }}
-                  >
-                    {item.image_url ? (
-                      <div className={`${isFeatured ? "h-64" : "h-48"} overflow-hidden`}>
-                        <img src={item.image_url} alt={item.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      </div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* Featured News */}
+              {news.length > 0 && (
+                <Link
+                  to={`/noticia/${news[0].id}`}
+                  className="glass-card lg:col-span-8 min-h-[400px] md:min-h-[450px] group relative overflow-hidden flex flex-col justify-end p-6 md:p-10"
+                >
+                  <div className="absolute inset-0">
+                    {news[0].image_url ? (
+                      <img src={news[0].image_url} alt={news[0].title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                     ) : (
-                      <div className={`${isFeatured ? "h-64" : "h-48"} bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center`}>
-                        <span className="text-5xl opacity-30">🏓</span>
+                      <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                        <span className="text-8xl opacity-20">🏓</span>
                       </div>
                     )}
-                    <div className="p-5">
-                      <time className="text-xs text-muted-foreground mb-2 block">
-                        {new Date(item.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric" })}
-                      </time>
-                      <h3 className={`font-heading font-semibold text-foreground mb-2 line-clamp-2 ${isFeatured ? "text-xl" : ""}`}>{item.title}</h3>
-                      <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">{stripHtml(item.content)}</p>
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
+                    <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500"></div>
+                  </div>
+                  <div className="relative z-10 animate-slide-up">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold uppercase tracking-widest mb-4 backdrop-blur-md border border-primary/20">
+                      Destacado
                     </div>
-                  </Link>
-                );
-              })}
+                    <h3 className="font-heading font-bold text-3xl md:text-4xl text-white mb-3 leading-tight group-hover:text-primary transition-colors drop-shadow-lg">{news[0].title}</h3>
+                    <p className="text-gray-300 line-clamp-2 md:line-clamp-3 text-sm md:text-base max-w-2xl drop-shadow-md">{stripHtml(news[0].content)}</p>
+                    <div className="mt-5 flex items-center gap-2 text-primary text-sm font-semibold uppercase tracking-wider">
+                      Leer artículo <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                </Link>
+              )}
+
+              {/* Secondary News */}
+              {news.length > 1 && (
+                <div className="lg:col-span-4 flex flex-col gap-4">
+                  {news.slice(1, 4).map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/noticia/${item.id}`}
+                      className="glass-card flex-1 flex flex-col group hover:-translate-y-1 transition-all duration-300 overflow-hidden relative"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-br from-white/0 to-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="p-5 flex flex-col h-full relative z-10 justify-center">
+                        <time className="text-[10px] uppercase tracking-widest font-bold text-primary mb-2 block">
+                          {new Date(item.created_at).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" })}
+                        </time>
+                        <h3 className="font-heading font-semibold text-lg text-foreground leading-tight mb-2 group-hover:text-primary transition-colors line-clamp-2">{item.title}</h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-auto">{stripHtml(item.content)}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </ScrollReveal>
       </section>
+      </div>
     </div>
   );
 }

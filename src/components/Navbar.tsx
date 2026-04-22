@@ -12,9 +12,20 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [pendingChallenges, setPendingChallenges] = useState(0);
 
   useEffect(() => {
     if (!player) return;
+
+    // Initial fetch of pending challenges
+    supabase
+      .from("challenges")
+      .select("id", { count: "exact", head: true })
+      .eq("challenged_id", player.id)
+      .eq("status", "pending")
+      .then(({ count }) => {
+        if (count !== null) setPendingChallenges(count);
+      });
 
     // Listen to Challenges where challenged_id = player.id
     const channel = supabase.channel('schema-db-changes')
@@ -24,6 +35,16 @@ export default function Navbar() {
         (payload) => {
           setNotifications(prev => ["¡Te han desafiado a un partido!", ...prev]);
           toast("¡Nuevo desafío!", { description: "Revisa tu sección de desafíos." });
+          setPendingChallenges(p => p + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'challenges', filter: `challenged_id=eq.${player.id}` },
+        () => {
+          // Re-fetch on updates (e.g. accepted/declined)
+          supabase.from("challenges").select("id", { count: "exact", head: true }).eq("challenged_id", player.id).eq("status", "pending")
+            .then(({ count }) => setPendingChallenges(count || 0));
         }
       )
       .on(
@@ -40,6 +61,26 @@ export default function Navbar() {
       supabase.removeChannel(channel);
     };
   }, [player]);
+
+  // Dynamic Favicon Effect
+  useEffect(() => {
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+
+    if (pendingChallenges > 0) {
+      // Red glowing ping pong ball (alert state)
+      link.href = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23ef4444"/><path d="M 30 50 Q 50 30 70 50" stroke="white" stroke-width="5" fill="none" opacity="0.6"/><circle cx="50" cy="50" r="40" fill="none" stroke="%23fca5a5" stroke-width="4"><animate attributeName="r" values="40;45;40" dur="1.5s" repeatCount="indefinite" /><animate attributeName="opacity" values="1;0;1" dur="1.5s" repeatCount="indefinite" /></circle></svg>`;
+      document.title = `(${pendingChallenges}) ¡Desafío Pendiente! | TDM`;
+    } else {
+      // Default orange ping pong ball
+      link.href = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="%23f97316"/><path d="M 30 50 Q 50 30 70 50" stroke="white" stroke-width="5" fill="none" opacity="0.4"/></svg>`;
+      document.title = "TDM Siete Palmas";
+    }
+  }, [pendingChallenges]);
 
   const isActive = (path: string) => location.pathname === path;
 
