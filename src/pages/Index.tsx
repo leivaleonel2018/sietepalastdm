@@ -396,12 +396,21 @@ export default function Index() {
     );
   };
   
-  const handleMouseMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    e.currentTarget.style.setProperty('--mouse-x', x.toString());
-    e.currentTarget.style.setProperty('--mouse-y', y.toString());
+  const handleCardEffect = (e: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>) => {
+    const target = e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    let x, y;
+
+    if ("touches" in e) {
+      x = (e.touches[0].clientX - rect.left) / rect.width;
+      y = (e.touches[0].clientY - rect.top) / rect.height;
+    } else {
+      x = (e.clientX - rect.left) / rect.width;
+      y = (e.clientY - rect.top) / rect.height;
+    }
+
+    target.style.setProperty("--mouse-x", x.toString());
+    target.style.setProperty("--mouse-y", y.toString());
   };
 
   return (
@@ -693,7 +702,9 @@ export default function Index() {
                           key={p.id}
                           to={`/jugador/${p.id}`}
                           className={`glass-card hologram-card flex flex-col items-center px-2 hover:shadow-md transition-all duration-300 hover:-translate-y-1 ${isFirst ? "py-6 border-yellow-500/30 bg-yellow-500/5 shadow-md z-10" : rank === 2 ? "py-4" : "py-3"}`}
-                          onMouseMove={handleMouseMove}
+                          onMouseMove={handleCardEffect}
+                          onTouchMove={handleCardEffect}
+                          onTouchStart={handleCardEffect}
                         >
                           {isFirst && <Crown className="w-5 h-5 text-yellow-500 mb-1" />}
                           <PlayerAvatar p={p} size={isFirst ? "w-16 h-16" : "w-12 h-12"} />

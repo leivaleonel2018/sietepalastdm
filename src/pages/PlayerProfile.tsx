@@ -391,18 +391,35 @@ export default function PlayerProfile() {
     return <span className="text-3xl drop-shadow-md">{iconStr || "🎖️"}</span>;
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleCardEffect = (e: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement>) => {
     if (!profileCardRef.current) return;
     const rect = profileCardRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    profileCardRef.current.style.setProperty('--mouse-x', x.toString());
-    profileCardRef.current.style.setProperty('--mouse-y', y.toString());
+    let x, y;
+
+    if ("touches" in e) {
+      x = (e.touches[0].clientX - rect.left) / rect.width;
+      y = (e.touches[0].clientY - rect.top) / rect.height;
+    } else {
+      x = (e.clientX - rect.left) / rect.width;
+      y = (e.clientY - rect.top) / rect.height;
+    }
+
+    profileCardRef.current.style.setProperty("--mouse-x", x.toString());
+    profileCardRef.current.style.setProperty("--mouse-y", y.toString());
   };
 
   return (
-    <div className={`min-h-screen bg-background ping-pong-pattern ${currentStreak >= 5 ? 'theme-immortal' : ''}`}>
-      <Navbar />
+    <div className={`min-h-screen bg-background relative overflow-x-hidden ping-pong-pattern ${currentStreak >= 5 ? 'theme-immortal' : ''}`}>
+      {/* Animated Nebula Background */}
+      <div className="particles-bg">
+        <div className="nebula-glow nebula-1"></div>
+        <div className="nebula-glow nebula-2"></div>
+        <div className="nebula-glow nebula-3"></div>
+        <div className="dust-particles"></div>
+      </div>
+
+      <div className="relative z-10">
+        <Navbar />
       <div className="container mx-auto px-4 py-10 max-w-3xl">
         <Link to="/rankings" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Rankings
@@ -412,7 +429,9 @@ export default function PlayerProfile() {
         <div
           ref={profileCardRef}
           className={`glass-card p-6 mb-6 animate-slide-up relative overflow-hidden ${currentRank && currentRank <= 3 ? 'hologram-card' : ''}`}
-          onMouseMove={currentRank && currentRank <= 3 ? handleMouseMove : undefined}
+          onMouseMove={currentRank && currentRank <= 3 ? handleCardEffect : undefined}
+          onTouchMove={currentRank && currentRank <= 3 ? handleCardEffect : undefined}
+          onTouchStart={currentRank && currentRank <= 3 ? handleCardEffect : undefined}
         >
           {/* Subtle background glow for the poster */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -z-10 pointer-events-none translate-x-1/2 -translate-y-1/2" />
@@ -822,6 +841,7 @@ export default function PlayerProfile() {
             )}
           </div>
         </ScrollReveal>
+        </div>
       </div>
     </div>
   );

@@ -62,9 +62,18 @@ export default function Tournaments() {
   };
 
   return (
-    <div className="min-h-screen bg-background ping-pong-pattern">
-      <Navbar />
-      <div className="container mx-auto px-4 py-10">
+    <div className="min-h-screen bg-background relative overflow-x-hidden ping-pong-pattern">
+      {/* Animated Nebula Background */}
+      <div className="particles-bg">
+        <div className="nebula-glow nebula-1"></div>
+        <div className="nebula-glow nebula-2"></div>
+        <div className="nebula-glow nebula-3"></div>
+        <div className="dust-particles"></div>
+      </div>
+
+      <div className="relative z-10">
+        <Navbar />
+        <div className="container mx-auto px-4 py-10">
         <h1 className="font-heading text-2xl font-bold text-foreground mb-6 flex items-center gap-2 animate-slide-up">
           <Trophy className="w-6 h-6 text-primary" /> Torneos
         </h1>
@@ -122,6 +131,7 @@ export default function Tournaments() {
             })}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

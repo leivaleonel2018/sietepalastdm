@@ -421,9 +421,18 @@ export default function TournamentDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-background ping-pong-pattern">
-      <Navbar />
-      <div className="container mx-auto px-4 py-10">
+    <div className="min-h-screen bg-background relative overflow-x-hidden ping-pong-pattern">
+      {/* Animated Nebula Background */}
+      <div className="particles-bg">
+        <div className="nebula-glow nebula-1"></div>
+        <div className="nebula-glow nebula-2"></div>
+        <div className="nebula-glow nebula-3"></div>
+        <div className="dust-particles"></div>
+      </div>
+
+      <div className="relative z-10">
+        <Navbar />
+        <div className="container mx-auto px-4 py-10">
         <Link to="/torneos" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Torneos
         </Link>
@@ -651,6 +660,7 @@ export default function TournamentDetail() {
             onCancel={() => setLiveUmpireMatch(null)}
           />
         )}
+        </div>
       </div>
     </div>
   );

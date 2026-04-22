@@ -112,6 +112,7 @@
     opacity: 0.4;
     animation: nebula-float 20s infinite ease-in-out alternate;
     pointer-events: none;
+    will-change: transform, opacity;
   }
 
   .nebula-1 {
@@ -158,6 +159,7 @@
     opacity: 0.6;
     mix-blend-mode: screen;
     pointer-events: none;
+    will-change: background-position;
   }
 
   .stat-card {
@@ -325,6 +327,7 @@
   background: linear-gradient(to right, #f97316, #ef4444);
   background-clip: text;
   -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: transparent;
   text-shadow: 0 0 10px rgba(249, 115, 22, 0.3);
 }
@@ -338,6 +341,7 @@
   background: linear-gradient(to right, #a855f7, #6366f1);
   background-clip: text;
   -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: transparent;
   text-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
 }
@@ -436,8 +440,22 @@
   background-position: calc(var(--mouse-x, 0.5) * 100%) calc(var(--mouse-y, 0.5) * 100%);
 }
 
-.hologram-card:hover::after {
+.hologram-card:hover::after,
+.hologram-card:active::after,
+.hologram-card.is-active::after {
   opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+  .hologram-card::after {
+    opacity: 0.4;
+    animation: hologram-idle 5s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes hologram-idle {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
 }
 
 .text-galactic {
@@ -446,6 +464,7 @@
   color: transparent;
   background-clip: text;
   -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   animation: shine 3s linear infinite;
   text-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
 }
