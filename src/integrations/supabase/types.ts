@@ -43,7 +43,6 @@ export type Database = {
       }
       challenges: {
         Row: {
-          ai_chronicle: string | null
           challenged_id: string
           challenged_sets_won: number | null
           challenger_id: string
@@ -57,7 +56,6 @@ export type Database = {
           winner_id: string | null
         }
         Insert: {
-          ai_chronicle?: string | null
           challenged_id: string
           challenged_sets_won?: number | null
           challenger_id: string
@@ -71,7 +69,6 @@ export type Database = {
           winner_id?: string | null
         }
         Update: {
-          ai_chronicle?: string | null
           challenged_id?: string
           challenged_sets_won?: number | null
           challenger_id?: string
@@ -110,7 +107,6 @@ export type Database = {
       }
       matches: {
         Row: {
-          ai_chronicle: string | null
           created_at: string
           group_name: string | null
           id: string
@@ -128,7 +124,6 @@ export type Database = {
           winner_id: string | null
         }
         Insert: {
-          ai_chronicle?: string | null
           created_at?: string
           group_name?: string | null
           id?: string
@@ -146,7 +141,6 @@ export type Database = {
           winner_id?: string | null
         }
         Update: {
-          ai_chronicle?: string | null
           created_at?: string
           group_name?: string | null
           id?: string
